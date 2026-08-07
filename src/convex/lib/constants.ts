@@ -1,0 +1,472 @@
+// Shared constants for DROP. Importable from both the Convex backend
+// (src/convex) and the client (via "@/convex/lib/constants").
+
+export const CATEGORIES = [
+  "Products",
+  "Places",
+  "Travel",
+  "Food",
+  "Entertainment",
+  "Documents",
+  "Receipts",
+  "Events",
+  "Ideas",
+  "Work",
+  "Study",
+  "People",
+  "Shopping",
+  "Reservations",
+  "Tickets",
+  "Finance",
+  "Inspiration",
+  "Other",
+] as const;
+
+export type Category = (typeof CATEGORIES)[number];
+
+export const DEFAULT_CATEGORY: Category = "Other";
+
+export function isCategory(value: string): value is Category {
+  return (CATEGORIES as readonly string[]).includes(value);
+}
+
+export const KINDS = [
+  "image",
+  "screenshot",
+  "link",
+  "note",
+  "document",
+] as const;
+export type DropKind = (typeof KINDS)[number];
+
+/** Where a drop came from — used for filters and "source" metadata. */
+export const SOURCES = [
+  "instagram",
+  "tiktok",
+  "youtube",
+  "x",
+  "pinterest",
+  "web",
+  "app",
+  "manual",
+  "email",
+] as const;
+export type Source = (typeof SOURCES)[number];
+
+export const DROP_STATUSES = ["processing", "ready", "needs_review", "failed"] as const;
+export type DropStatus = (typeof DROP_STATUSES)[number];
+
+export const ANALYSIS_STATUSES = ["pending", "processing", "done", "failed"] as const;
+export type AnalysisStatus = (typeof ANALYSIS_STATUSES)[number];
+
+export const ENTITY_TYPES = [
+  "person",
+  "brand",
+  "place",
+  "address",
+  "date",
+  "time",
+  "price",
+  "currency",
+  "product",
+  "event",
+  "url",
+  "phone",
+  "email",
+  "number",
+  "reservation",
+  "genre",
+  "organization",
+  "language",
+  "color",
+  "size",
+] as const;
+export type EntityType = (typeof ENTITY_TYPES)[number];
+
+/** Bump to invalidate cached analyses and force re-analysis. */
+export const ANALYSIS_VERSION = 1;
+
+export interface PlanDef {
+  id: string;
+  name: string;
+  priceMonthly: number;
+  priceYearly: number;
+  currency: string;
+  dropLimit: number | null; // null = unlimited
+  features: string[];
+}
+
+export const PLAN_DEFS: PlanDef[] = [
+  {
+    id: "free",
+    name: "Free",
+    priceMonthly: 0,
+    priceYearly: 0,
+    currency: "usd",
+    dropLimit: 100,
+    features: [
+      "100 Drops",
+      "Basic search",
+      "Basic AI organization",
+      "1 collection",
+    ],
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    priceMonthly: 5.99,
+    priceYearly: 49.99,
+    currency: "usd",
+    dropLimit: null,
+    features: [
+      "Unlimited Drops",
+      "Advanced AI search",
+      "Ask DROP assistant",
+      "Document understanding",
+      "Smart reminders",
+      "Unlimited collections",
+      "Travel organization",
+      "Wishlist",
+    ],
+  },
+  {
+    id: "family",
+    name: "Family",
+    priceMonthly: 9.99,
+    priceYearly: 99.99,
+    currency: "usd",
+    dropLimit: null,
+    features: [
+      "Up to 5 people",
+      "Individual private accounts",
+      "Optional shared collections",
+      "Shared travel lists",
+      "Shared shopping lists",
+    ],
+  },
+];
+
+/** Demo-friendly sample data used by loadDemoData (see src/convex/users.ts). */
+export const DEMO_DROPS: Array<Record<string, unknown>> = [
+  {
+    kind: "screenshot",
+    title: "Black Nike Air Max 95 – €129",
+    summary:
+      "Black Nike Air Max 95 sneakers, size 42, priced €129 at the Nike store. Saved as a wishlist item.",
+    category: "Products",
+    subcategory: "Shoes",
+    keywords: ["nike", "air max 95", "shoes", "black", "sneakers", "wishlist"],
+    tags: ["wishlist", "shoes"],
+    url: "https://www.nike.com/t/air-max-95",
+    source: "web",
+    confidence: 0.96,
+    entities: [
+      { type: "product", value: "Nike Air Max 95", confidence: 0.97, metadata: { color: "Black", size: "42" } },
+      { type: "brand", value: "Nike", confidence: 0.98 },
+      { type: "price", value: "€129", confidence: 0.95 },
+      { type: "currency", value: "EUR", confidence: 0.95 },
+      { type: "color", value: "Black", confidence: 0.9 },
+      { type: "size", value: "42", confidence: 0.8 },
+    ],
+    product: {
+      name: "Nike Air Max 95",
+      brand: "Nike",
+      price: 129,
+      currency: "EUR",
+      store: "Nike",
+      productUrl: "https://www.nike.com/t/air-max-95",
+      category: "Shoes",
+      color: "Black",
+      size: "42",
+    },
+    intent: "buy_later",
+    suggestedAction: "Track price",
+    searchText:
+      "Black Nike Air Max 95 €129 shoes sneakers wishlist black air max 95 nike",
+  },
+  {
+    kind: "link",
+    title: "Rome restaurant – Roscioli",
+    summary:
+      "Roscioli, a well-known restaurant and salumeria in Rome. Central location near Campo de' Fiori, Italian cuisine, moderate price level.",
+    category: "Places",
+    subcategory: "Restaurants",
+    keywords: ["roscioli", "rome", "restaurant", "italian food", "salumeria"],
+    tags: ["rome", "food"],
+    url: "https://www.instagram.com/roscioli",
+    source: "instagram",
+    confidence: 0.94,
+    entities: [
+      { type: "place", value: "Roscioli", confidence: 0.96, metadata: { city: "Rome", country: "Italy" } },
+      { type: "place", value: "Rome", confidence: 0.97, metadata: { country: "Italy" } },
+      { type: "genre", value: "Italian", confidence: 0.85 },
+    ],
+    place: {
+      name: "Roscioli",
+      city: "Rome",
+      country: "Italy",
+      address: "Via dei Giubbonari 21, Rome",
+      category: "Restaurant",
+      source: "instagram",
+    },
+    intent: "visit_later",
+    suggestedAction: "Open in Maps",
+    searchText: "Rome restaurant Roscioli italian food salumeria via dei giubbonari 21",
+  },
+  {
+    kind: "screenshot",
+    title: "Istanbul → London flight – September 18",
+    summary:
+      "Turkish Airlines flight TK1979 from Istanbul (IST) to London (LHR), September 18, 09:40 departure. Booking reference ABC123.",
+    category: "Travel",
+    subcategory: "Flights",
+    keywords: ["flight", "turkish airlines", "istanbul", "london", "tk1979", "booking"],
+    tags: ["travel", "flight"],
+    url: "https://www.turkishairlines.com",
+    source: "app",
+    confidence: 0.95,
+    entities: [
+      { type: "place", value: "Istanbul", confidence: 0.97, metadata: { role: "departure" } },
+      { type: "place", value: "London", confidence: 0.97, metadata: { role: "destination" } },
+      { type: "date", value: "September 18", confidence: 0.96, metadata: { iso: "2026-09-18" } },
+      { type: "time", value: "09:40", confidence: 0.9 },
+      { type: "reservation", value: "TK1979", confidence: 0.93, metadata: { reference: "ABC123" } },
+      { type: "brand", value: "Turkish Airlines", confidence: 0.96 },
+    ],
+    reservation: {
+      type: "flight",
+      provider: "Turkish Airlines",
+      reference: "ABC123",
+      startTime: 1781941200000, // 2026-09-18T09:40:00+03:00 approx (demo)
+    },
+    flight: {
+      airline: "Turkish Airlines",
+      flightNumber: "TK1979",
+      departure: "Istanbul (IST)",
+      destination: "London (LHR)",
+      departureTime: 1781941200000,
+      bookingReference: "ABC123",
+    },
+    suggestedAction: "Add to calendar",
+    suggestedReminder: { text: "Remind 24h before departure", at: 1781854800000 },
+    searchText: "Istanbul London flight Turkish Airlines TK1979 September 18 09:40 booking ABC123",
+  },
+  {
+    kind: "link",
+    title: "Tokyo hotel – Shinjuku Prince",
+    summary:
+      "Shinjuku Prince Hotel, Tokyo. Modern hotel in Shinjuku, ¥28,000 per night, close to Shinjuku Station.",
+    category: "Places",
+    subcategory: "Hotels",
+    keywords: ["tokyo", "hotel", "shinjuku", "japan"],
+    tags: ["tokyo", "japan", "hotel"],
+    url: "https://www.shinjukupincehotel.co.jp",
+    source: "web",
+    confidence: 0.93,
+    entities: [
+      { type: "place", value: "Shinjuku Prince Hotel", confidence: 0.94, metadata: { city: "Tokyo", country: "Japan" } },
+      { type: "place", value: "Tokyo", confidence: 0.96, metadata: { country: "Japan" } },
+      { type: "place", value: "Shinjuku", confidence: 0.95 },
+      { type: "price", value: "¥28,000", confidence: 0.9 },
+      { type: "currency", value: "JPY", confidence: 0.9 },
+    ],
+    place: {
+      name: "Shinjuku Prince Hotel",
+      city: "Tokyo",
+      country: "Japan",
+      address: "Shinjuku, Tokyo",
+      category: "Hotel",
+    },
+    product: { name: "Shinjuku Prince Hotel", price: 28000, currency: "JPY", category: "Hotel" },
+    intent: "visit_later",
+    suggestedAction: "Save to trip",
+    searchText: "Tokyo hotel Shinjuku Prince Japan ¥28000 per night",
+  },
+  {
+    kind: "note",
+    title: "MacBook Pro M5 deal",
+    summary:
+      "MacBook Pro M5 (16\") spotted at €1,999 at MediaMarkt. Consider for the new laptop search.",
+    category: "Products",
+    subcategory: "Electronics",
+    keywords: ["macbook", "apple", "laptop", "deal", "mediamarkt"],
+    tags: ["laptop", "deal"],
+    text: "MacBook Pro M5 (16\") — €1,999 at MediaMarkt. Great deal, considering.",
+    confidence: 0.92,
+    entities: [
+      { type: "product", value: "MacBook Pro M5", confidence: 0.95 },
+      { type: "brand", value: "Apple", confidence: 0.95 },
+      { type: "price", value: "€1,999", confidence: 0.94 },
+      { type: "currency", value: "EUR", confidence: 0.94 },
+      { type: "place", value: "MediaMarkt", confidence: 0.8 },
+    ],
+    product: { name: "MacBook Pro M5", brand: "Apple", price: 1999, currency: "EUR", store: "MediaMarkt", category: "Electronics" },
+    intent: "buy_later",
+    suggestedAction: "Track price",
+    searchText: "MacBook Pro M5 deal 1999 apple laptop mediamarkt",
+  },
+  {
+    kind: "link",
+    title: "Netflix series – Severance",
+    summary:
+      "Severance — Apple TV+ sci-fi series recommended by a friend. Watch later.",
+    category: "Entertainment",
+    subcategory: "TV Shows",
+    keywords: ["severance", "netflix", "series", "watch later", "sci-fi"],
+    tags: ["watch-later", "tv"],
+    url: "https://tv.apple.com/show/severance",
+    source: "web",
+    confidence: 0.9,
+    entities: [
+      { type: "product", value: "Severance", confidence: 0.92 },
+      { type: "genre", value: "Sci-fi", confidence: 0.85 },
+      { type: "brand", value: "Apple TV+", confidence: 0.88 },
+    ],
+    suggestedAction: "Add to Watchlist",
+    searchText: "Severance netflix series sci-fi watch later friend recommended",
+  },
+  {
+    kind: "screenshot",
+    title: "Electricity bill – July 2026",
+    summary:
+      "ENEL electricity bill for July 2026, total €86.40. Payment due August 15.",
+    category: "Receipts",
+    subcategory: "Utilities",
+    keywords: ["electricity", "bill", "enel", "july 2026", "utility"],
+    tags: ["bills", "finance"],
+    url: "https://www.enel.it",
+    source: "app",
+    confidence: 0.93,
+    entities: [
+      { type: "organization", value: "ENEL", confidence: 0.96 },
+      { type: "price", value: "€86.40", confidence: 0.95 },
+      { type: "currency", value: "EUR", confidence: 0.95 },
+      { type: "date", value: "August 15", confidence: 0.88, metadata: { iso: "2026-08-15" } },
+    ],
+    receipt: {
+      merchant: "ENEL",
+      total: 86.4,
+      currency: "EUR",
+      paymentMethod: "SEPA",
+      orderNumber: "EN-88231",
+      returnDeadline: 1784246400000, // 2026-08-15 (demo)
+    },
+    suggestedAction: "Set payment reminder",
+    searchText: "electricity bill july 2026 enel €86.40 due august 15",
+  },
+  {
+    kind: "note",
+    title: "Apartment inspiration",
+    summary:
+      "Ideas for the apartment: warm wood floor, deep green sofa, gallery wall, big windows with linen curtains, lots of plants.",
+    category: "Ideas",
+    subcategory: "Home",
+    keywords: ["apartment", "interior", "home", "sofa", "gallery wall"],
+    tags: ["home", "ideas"],
+    text: "Apartment ideas: warm wood floor, deep green sofa, gallery wall above the sofa, linen curtains, monsteras everywhere.",
+    confidence: 0.88,
+    entities: [
+      { type: "genre", value: "Interior design", confidence: 0.7 },
+      { type: "color", value: "Green", confidence: 0.8 },
+    ],
+    searchText: "apartment inspiration home interior wood floor green sofa gallery wall plants",
+  },
+  {
+    kind: "screenshot",
+    title: "Oasis concert ticket – San Siro, Milan",
+    summary:
+      "Oasis reunion concert ticket, September 20 2026 at San Siro, Milan. General admission, €95.",
+    category: "Tickets",
+    subcategory: "Concerts",
+    keywords: ["oasis", "concert", "ticket", "milan", "san siro"],
+    tags: ["tickets", "events"],
+    url: "https://www.ticketmaster.it",
+    source: "app",
+    confidence: 0.94,
+    entities: [
+      { type: "event", value: "Oasis concert", confidence: 0.95 },
+      { type: "place", value: "San Siro", confidence: 0.94, metadata: { city: "Milan" } },
+      { type: "place", value: "Milan", confidence: 0.94, metadata: { country: "Italy" } },
+      { type: "date", value: "September 20", confidence: 0.95, metadata: { iso: "2026-09-20" } },
+      { type: "price", value: "€95", confidence: 0.93 },
+      { type: "currency", value: "EUR", confidence: 0.93 },
+    ],
+    event: { name: "Oasis concert", startTime: 1782424800000, location: "San Siro, Milan" },
+    reservation: { type: "event", reference: "OAS-7712", startTime: 1782424800000, location: "San Siro, Milan" },
+    suggestedAction: "Add to calendar",
+    searchText: "Oasis concert ticket San Siro Milan September 20 2026 €95",
+  },
+  {
+    kind: "link",
+    title: "Sony WH-1000XM6 headphones – €249",
+    summary:
+      "Sony WH-1000XM6 noise-cancelling headphones, €249. Price drop from €299 — tracked.",
+    category: "Products",
+    subcategory: "Electronics",
+    keywords: ["sony", "headphones", "noise cancelling", "deal"],
+    tags: ["wishlist", "electronics"],
+    url: "https://www.sony.com",
+    source: "web",
+    confidence: 0.92,
+    entities: [
+      { type: "product", value: "Sony WH-1000XM6", confidence: 0.95 },
+      { type: "brand", value: "Sony", confidence: 0.96 },
+      { type: "price", value: "€249", confidence: 0.95 },
+      { type: "currency", value: "EUR", confidence: 0.95 },
+    ],
+    product: { name: "Sony WH-1000XM6", brand: "Sony", price: 249, currency: "EUR", category: "Electronics", color: "Black" },
+    intent: "buy_later",
+    suggestedAction: "Track price",
+    searchText: "Sony WH-1000XM6 headphones €249 noise cancelling black",
+  },
+  {
+    kind: "screenshot",
+    title: "Carbonara at Roscioli – Instagram",
+    summary:
+      "Instagram post of cacio e pepe and carbonara at Roscioli, Rome. Saved to try when visiting.",
+    category: "Food",
+    subcategory: "Restaurants",
+    keywords: ["carbonara", "pasta", "rome", "instagram", "food"],
+    tags: ["rome", "food"],
+    url: "https://www.instagram.com",
+    source: "instagram",
+    confidence: 0.9,
+    entities: [
+      { type: "place", value: "Rome", confidence: 0.93, metadata: { country: "Italy" } },
+      { type: "genre", value: "Italian", confidence: 0.9 },
+    ],
+    place: { name: "Roscioli", city: "Rome", country: "Italy", category: "Restaurant", source: "instagram" },
+    intent: "visit_later",
+    searchText: "carbonara cacio e pepe pasta rome instagram roscioli food",
+  },
+  {
+    kind: "link",
+    title: "Atomic Habits – book to read",
+    summary:
+      "Atomic Habits by James Clear — recommended, add to reading list.",
+    category: "Entertainment",
+    subcategory: "Books",
+    keywords: ["atomic habits", "james clear", "book", "reading list"],
+    tags: ["read-later", "books"],
+    url: "https://www.goodreads.com/book/show/40121378-atomic-habits",
+    source: "web",
+    confidence: 0.9,
+    entities: [
+      { type: "product", value: "Atomic Habits", confidence: 0.93 },
+      { type: "person", value: "James Clear", confidence: 0.92 },
+      { type: "genre", value: "Self-help", confidence: 0.85 },
+    ],
+    suggestedAction: "Add to Reading List",
+    searchText: "Atomic Habits James Clear book reading list self-help",
+  },
+];
+
+/** Magic collection rule ids (computed live, not stored). */
+export const MAGIC_COLLECTIONS = [
+  { id: "under100", name: "Under €100", emoji: "🪙" },
+  { id: "italy", name: "Italy", emoji: "🇮🇹" },
+  { id: "thismonth", name: "This Month", emoji: "🗓️" },
+  { id: "upcoming", name: "Upcoming", emoji: "⏰" },
+  { id: "favorites", name: "Favorites", emoji: "⭐" },
+  { id: "screenshots", name: "Screenshots", emoji: "📸" },
+] as const;
