@@ -1,272 +1,186 @@
-## Overview
+# DROP — Everything you save. Finally searchable.
 
-This project uses the following tech stack:
-- Vite
-- Typescript
-- React Router v7 (all imports from `react-router` instead of `react-router-dom`)
-- React 19 (for frontend components)
-- Tailwind v4 (for styling)
-- Shadcn UI (for UI components library)
-- Lucide Icons (for icons)
-- Convex (for backend & database)
-- Convex Auth (for authentication)
-- Framer Motion (for animations)
-- Three js (for 3d models)
+DROP is an AI-powered personal memory system. It turns screenshots, links,
+videos, notes, documents, receipts, products, places, reservations and saved
+content into a searchable "second brain" — with one obsession:
 
-All relevant files live in the 'src' directory.
+**Remember everything without organizing anything.**
 
-Use bun for the package manager.
+The core loop is `SAVE → UNDERSTAND → SEARCH`:
 
-## Setup
+1. Drop anything (screenshot, photo, link, note, document) — it's saved instantly.
+2. DROP's AI pipeline analyzes it in the background: smart title, summary,
+   category, entities (people, brands, places, prices, dates), product/place/
+   event/receipt details, suggested actions and reminders.
+3. Later, find it with a vague natural-language query: *"the black shoes I
+   saved"* → the exact screenshot, from hybrid keyword + semantic search.
 
-This project is set up already and running on a cloud environment, as well as a convex development in the sandbox.
+---
 
-## Environment Variables
+## Stack
 
-The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side.
+| Layer    | Technology                                                        |
+| -------- | ----------------------------------------------------------------- |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui, Framer Motion |
+| Backend  | **Convex** (managed serverless backend + database + file storage) |
+| Auth     | Convex Auth — email OTP + anonymous (guest)                       |
+| AI       | Google Gemini (multimodal vision + embeddings), swappable via an abstraction layer |
+| Search   | Hybrid: keyword scoring + semantic vectors (cosine) + metadata filters |
 
-The convex server has a separate set of environment variables that are accessible by the convex backend.
+> **Note on the stack:** the original brief suggested Next.js + PostgreSQL.
+> This build runs on the project template's stack (Vite + React + Convex),
+> which provides a managed database, reactive queries, and private object
+> storage out of the box — no separate Postgres or S3 to run. The schema and
+> AI layer are written so they can be lifted to PostgreSQL + pgvector later
+> without reworking the product.
 
-Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
+## Local setup
 
-
-# Using Authentication (Important!)
-
-You must follow these conventions when using authentication.
-
-## Auth is already set up.
-
-All convex authentication functions are already set up. The auth currently uses email OTP and anonymous users, but can support more.
-
-The email OTP configuration is defined in `src/convex/auth/emailOtp.ts`. DO NOT MODIFY THIS FILE.
-
-Also, DO NOT MODIFY THESE AUTH FILES: `src/convex/auth.config.ts` and `src/convex/auth.ts`.
-
-## Using Convex Auth on the backend
-
-On the `src/convex/users.ts` file, you can use the `getCurrentUser` function to get the current user's data.
-
-## Using Convex Auth on the frontend
-
-The `/auth` page is already set up to use auth. Navigate to `/auth` for all log in / sign up sequences.
-
-You MUST use this hook to get user data. Never do this yourself without the hook:
-```typescript
-import { useAuth } from "@/hooks/use-auth";
-
-const { isLoading, isAuthenticated, user, signIn, signOut } = useAuth();
+```bash
+bun install
+bun convex dev --once      # pushes backend functions & generates types
+bun run dev                # starts the Vite dev server
 ```
 
-## Protected Routes
+Convex runs against the deployment configured via `CONVEX_DEPLOYMENT` /
+`VITE_CONVEX_URL` (injected by the platform — do not edit `.env` files).
 
-The starter `/dashboard` route is protected with `RequireAuth`, which sends
-signed-out users to `/auth?returnTo=<current route>`. Extend that page for the
-product's authenticated experience, and reuse `RequireAuth` when adding another
-protected route.
+## Environment variables
 
-## Auth Page
+| Variable                    | Where           | Required | Purpose                                   |
+| --------------------------- | --------------- | -------- | ----------------------------------------- |
+| `GOOGLE_API_KEY`            | Convex env vars | No       | Real AI analysis + embeddings (Gemini)     |
+| `GEMINI_MODEL`              | Convex env vars | No       | Default `gemini-2.5-flash`                 |
+| `GEMINI_EMBEDDING_MODEL`    | Convex env vars | No       | Default `text-embedding-004`               |
+| `VITE_CONVEX_URL`           | Client          | Yes      | Convex deployment URL (platform-managed)   |
+| `CONVEX_DEPLOYMENT`         | Convex          | Yes      | Deployment token (platform-managed)        |
+| `VLY_INTEGRATION_KEY`       | Convex          | Optional | Vly integrations gateway (email/payments)  |
 
-The auth page is defined in `src/pages/Auth.tsx`. Send sign-in and sign-up actions
-to `/auth`.
+### AI provider setup (Gemini)
 
-## Authorization
+1. Create a Google AI Studio API key: <https://aistudio.google.com/apikey>
+2. Add it as a **Convex environment variable** named `GOOGLE_API_KEY`
+   (in the project's Keys/API keys UI — never commit it).
+3. Re-analyze existing Drops from their detail page ("Help DROP understand
+   this") to upgrade them to real analysis + semantic embeddings.
 
-You can perform authorization checks on the frontend and backend.
+**Demo mode:** without a key, DROP uses a deterministic heuristic analyzer
+(`src/convex/ai/demo.ts`) so the full product loop works offline, free and
+instantly. Real multimodal understanding (reading image pixels, OCR, PDFs,
+link content) activates the moment `GOOGLE_API_KEY` is set.
 
-On the frontend, you can use the `useAuth` hook to get the current user's data and authentication state.
+### Swapping providers
 
-You should also be protecting queries, mutations, and actions at the base level, checking for authorization securely.
+All AI goes through `AIProvider` (`src/convex/ai/types.ts`) with two
+implementations (`gemini.ts`, `demo.ts`). Add a new provider by implementing
+`analyze()`, `embed()` and optionally `synthesize()`, then return it from
+`getProvider()` in `src/convex/ai/index.ts`.
 
-## Adding a redirect after auth
-
-The `/auth` route in `src/main.tsx` redirects to `/dashboard` by default. If the
-product's main authenticated route is different, update `redirectAfterAuth` to
-that route. A validated same-origin `returnTo` query parameter takes priority so
-users can resume the protected page they originally requested. Never leave an
-authenticated product redirecting back to the public landing page.
-
-## Complete authenticated products
-
-When the requested product implies accounts, a workspace, a dashboard, or other
-signed-in functionality, the task is not complete with only a landing page and
-auth form. Build the main authenticated experience, protect its route, and verify
-that signing in reaches it.
-
-# Frontend Conventions
-
-You will be using the Vite frontend with React 19, Tailwind v4, and Shadcn UI.
-
-Generally, pages should be in the `src/pages` folder, and components should be in the `src/components` folder.
-
-Shadcn primitives are located in the `src/components/ui` folder and should be used by default.
-
-## Page routing
-
-Your page component should go under the `src/pages` folder.
-
-When adding a page, update the react router configuration in `src/main.tsx` to include the new route you just added.
-
-## Shad CN conventions
-
-Follow these conventions when using Shad CN components, which you should use by default.
-- Remember to use "cursor-pointer" to make the element clickable
-- For title text, use the "tracking-tight font-bold" class to make the text more readable
-- Always make apps MOBILE RESPONSIVE. This is important
-- AVOID NESTED CARDS. Try and not to nest cards, borders, components, etc. Nested cards add clutter and make the app look messy.
-- AVOID SHADOWS. Avoid adding any shadows to components. stick with a thin border without the shadow.
-- Avoid skeletons; instead, use the loader2 component to show a spinning loading state when loading data.
-
-
-## Landing Pages
-
-You must always create good-looking designer-level styles to your application. 
-- Make it well animated and fit a certain "theme", ie neo brutalist, retro, neumorphism, glass morphism, etc
-
-Use known images and emojis from online.
-
-If the user is logged in already, show the get started button to say "Dashboard" or "Profile" instead to take them there.
-
-## Responsiveness and formatting
-
-Make sure pages are wrapped in a container to prevent the width stretching out on wide screens. Always make sure they are centered aligned and not off-center.
-
-Always make sure that your designs are mobile responsive. Verify the formatting to ensure it has correct max and min widths as well as mobile responsiveness.
-
-- Always create sidebars for protected dashboard pages and navigate between pages
-- Always create navbars for landing pages
-- On these bars, the created logo should be clickable and redirect to the index page
-
-## Animating with Framer Motion
-
-You must add animations to components using Framer Motion. It is already installed and configured in the project.
-
-To use it, import the `motion` component from `framer-motion` and use it to wrap the component you want to animate.
-
-
-### Other Items to animate
-- Fade in and Fade Out
-- Slide in and Slide Out animations
-- Rendering animations
-- Button clicks and UI elements
-
-Animate for all components, including on landing page and app pages.
-
-## Three JS Graphics
-
-Your app comes with three js by default. You can use it to create 3D graphics for landing pages, games, etc.
-
-
-## Colors
-
-You can override colors in: `src/index.css`
-
-This uses the oklch color format for tailwind v4.
-
-Always use these color variable names.
-
-Make sure all ui components are set up to be mobile responsive and compatible with both light and dark mode.
-
-Set theme using `dark` or `light` variables at the parent className.
-
-## Styling and Theming
-
-When changing the theme, always change the underlying theme of the shad cn components app-wide under `src/components/ui` and the colors in the index.css file.
-
-Avoid hardcoding in colors unless necessary for a use case, and properly implement themes through the underlying shad cn ui components.
-
-When styling, ensure buttons and clickable items have pointer-click on them (don't by default).
-
-Always follow a set theme style and ensure it is tuned to the user's liking.
-
-## Toasts
-
-You should always use toasts to display results to the user, such as confirmations, results, errors, etc.
-
-Use the shad cn Sonner component as the toaster. For example:
+## Architecture
 
 ```
-import { toast } from "sonner"
+src/convex/
+  schema.ts          Data model: users, drops, collections, collectionDrops,
+                     reminders, searchHistory, plans
+  drops.ts           Drop CRUD + queries (recent, related, upcoming, wishlist,
+                     places, counts) + duplicate detection
+  analyze.ts         Async AI pipeline action (scheduled on create)
+  search.ts          Hybrid search action + Ask DROP synthesis action
+  collections.ts     Collections + membership
+  reminders.ts       Reminders (natural-language text + timestamp)
+  profile.ts         Settings, stats, data export, account deletion, demo data
+  searchHistory.ts   Search history (opt-out)
+  seed.ts            Plan catalog seeding (limits live in the DB)
+  ai/                Provider abstraction (Gemini + demo) + JSON parsing
+  lib/               Constants (categories, plans, demo data), search-text builder
 
-import { Button } from "@/components/ui/button"
-export function SonnerDemo() {
-  return (
-    <Button
-      variant="outline"
-      onClick={() =>
-        toast("Event has been created", {
-          description: "Sunday, December 03, 2023 at 9:00 AM",
-          action: {
-            label: "Undo",
-            onClick: () => console.log("Undo"),
-          },
-        })
-      }
-    >
-      Show Toast
-    </Button>
-  )
-}
+src/
+  pages/Landing.tsx      Marketing page (hero demo, features, privacy, pricing, FAQ)
+  pages/Auth.tsx         Sign-in (email OTP / guest) with DROP branding
+  pages/app/…            Home, Search, Inbox, Collections(+detail), Places,
+                         Wishlist, Upcoming, Ask DROP, Drop detail, Profile
+  components/app/        App shell (sidebar + mobile bottom nav + onboarding)
+  components/drops/      Add Drop sheet, Drop card, status badges
 ```
 
-Remember to import { toast } from "sonner". Usage: `toast("Event has been created.")`
+### The AI pipeline
 
-## Dialogs
+1. `drops.create` inserts the Drop instantly and schedules `analyze.analyzeDrop`.
+2. The action fetches the original file (signed URL), sends it (or the text/URL)
+   to the provider, and gets structured JSON: title, summary, category,
+   subcategory, keywords, entities, product/place/event/receipt/reservation/
+   flight data, suggested action/reminder, confidence.
+3. The searchable text is embedded once (`text-embedding-004`) and stored on the
+   Drop with `embeddingProvider` for cache consistency.
+4. Results are written back; `status` becomes `ready` (or `needs_review` if
+   confidence < 0.45, `failed` on error — the Drop is never lost).
 
-Always ensure your larger dialogs have a scroll in its content to ensure that its content fits the screen size. Make sure that the content is not cut off from the screen.
+Cost controls: analyses are cached via `analysisVersion`, embeddings are
+generated once per content, and the provider abstraction allows routing cheap
+classification models vs. strong multimodal models.
 
-Ideally, instead of using a new page, use a Dialog instead. 
+### Search
 
-# Using the Convex backend
+`search.searchDrops` combines:
 
-You will be implementing the convex backend. Follow your knowledge of convex and the documentation to implement the backend.
+- **Keyword scoring** across title ×4, keywords ×3, summary ×2, tags ×2,
+  category ×1.5, text/OCR ×1
+- **Semantic cosine** over stored embeddings (same-provider embeddings only)
+- **Metadata filters**: category, kind, source, place, price range, date range,
+  collection, tag, starred, archived
 
-## The Convex Schema
+For MVP scale the search action scans the user's own Drops in memory (hundreds
+to low thousands — fine for a personal memory). The schema isolates embeddings
+so the upgrade path to a real vector index (e.g., pgvector) is mechanical.
 
-You must correctly follow the convex schema implementation.
+### Ask DROP
 
-The schema is defined in `src/convex/schema.ts`.
+`search.askDrop` retrieves the top-matching Drops and — when a provider key is
+set — asks the model to answer **strictly from those saved items** (never
+inventing). Without a key it falls back to a structured "based on your Drops"
+result list.
 
-Do not include the `_id` and `_creationTime` fields in your queries (it is included by default for each table).
-Do not index `_creationTime` as it is indexed for you. Never have duplicate indexes.
+## Plans & billing
 
+Plan definitions live in `src/convex/lib/constants.ts` and are seeded into the
+`plans` table (`profile.loadDemoData` → `seed.seedPlans`), so limits are
+configurable in the database. Free = 100 Drops; Pro = $5.99/mo or $49.99/yr;
+Family = $9.99/mo.
 
-## Convex Actions: Using CRUD operations
+Stripe is **not wired up yet** — `profile.planInfo` reads the plan table and
+the UI gates the free limit. To add billing, use the Vly payments gateway
+(see `integrations.md`) or Stripe webhooks, updating `users.plan` /
+`planStatus` / `planRenewsAt`.
 
-When running anything that involves external connections, you must use a convex action with "use node" at the top of the file.
+## Privacy & security
 
-You cannot have queries or mutations in the same file as a "use node" action file. Thus, you must use pre-built queries and mutations in other files.
+- Private by default: Drops are never public; no sharing URLs are generated.
+- Files are stored in Convex storage and served only via signed URLs resolved
+  inside authenticated queries (`drops.getStorageUrl`).
+- Every query/mutation/action checks ownership on the server (`userId`).
+- Account deletion removes Drops + files + collections + reminders + history.
+- Full data export (JSON) from Profile.
+- Search history is opt-in and clearable.
+- No facial recognition: only textual names are extracted from screenshots.
 
-You can also use the pre-installed internal crud functions for the database:
+## Deployment
 
-```ts
-// in convex/users.ts
-import { crud } from "convex-helpers/server/crud";
-import schema from "./schema.ts";
+The platform manages the dev server and Convex push. For production:
 
-export const { create, read, update, destroy } = crud(schema, "users");
+1. Set `GOOGLE_API_KEY` in Convex env vars.
+2. `bun convex deploy` to push backend functions to production.
+3. `bun run build && bun run preview` (or host the static build) for the frontend.
+4. Configure your auth issuer/domain in `src/convex/auth.config.ts` if
+   self-hosting outside freebuff.
 
-// in some file, in an action:
-const user = await ctx.runQuery(internal.users.read, { id: userId });
+## Roadmap / extension points
 
-await ctx.runMutation(internal.users.update, {
-  id: userId,
-  patch: {
-    status: "inactive",
-  },
-});
-```
+Future work is designed for, not blocked by, the current architecture:
 
-
-## Common Convex Mistakes To Avoid
-
-When using convex, make sure:
-- Document IDs are referenced as `_id` field, not `id`.
-- Document ID types are referenced as `Id<"TableName">`, not `string`.
-- Document object types are referenced as `Doc<"TableName">`.
-- Keep schemaValidation to false in the schema file.
-- You must correctly type your code so that it passes the type checker.
-- You must handle null / undefined cases of your convex queries for both frontend and backend, or else it will throw an error that your data could be null or undefined.
-- Always use the `@/folder` path, with `@/convex/folder/file.ts` syntax for importing convex files.
-- This includes importing generated files like `@/convex/_generated/server`, `@/convex/_generated/api`
-- Remember to import functions like useQuery, useMutation, useAction, etc. from `convex/react`
-- NEVER have return type validators.
+- Mobile Share Sheet / iOS screenshot import / Android share intent
+- Browser extension, email-to-DROP, WhatsApp/Telegram ingestion
+- Price tracking & return-deadline alerts (reminders table + `receipt.returnDeadline`)
+- Public collection sharing (collections already have `isPublic`/`shareToken`)
+- Stripe subscriptions (plans table + users.plan fields)
+- Push notifications for reminders (scheduled jobs)
+- Local/private AI processing (provider abstraction)

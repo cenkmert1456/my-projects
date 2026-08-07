@@ -136,6 +136,16 @@ export const places = query({
   },
 });
 
+/** Resolve a signed/private storage URL for a drop's file (images, documents). */
+export const getStorageUrl = query({
+  args: { storageId: v.string() },
+  handler: async (ctx, { storageId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    return await ctx.storage.getUrl(storageId);
+  },
+});
+
 export const counts = query({
   args: {},
   handler: async (ctx) => {

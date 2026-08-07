@@ -1,16 +1,17 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
+  "name": "DROP — Everything you save. Finally searchable.",
+  "short_name": "DROP",
+  "description": "DROP is your AI-powered personal memory. Save screenshots, links, products, places and ideas — then find anything with a natural-language search.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#15130f",
+  "theme_color": "#15130f",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "/drop-icon.svg",
       "sizes": "any",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ]
