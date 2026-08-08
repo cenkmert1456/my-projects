@@ -187,7 +187,10 @@ export default function AppShell() {
           initialKind={sheetKind}
         />
 
-        {user && user.onboardingDone !== true && <OnboardingOverlay />}
+        {/* The overlay stays mounted while signed in and manages its own
+            visibility + exit animation, so AnimatePresence never gets
+            unmounted mid-exit (which crashes React with a removeChild error). */}
+        {user && <OnboardingOverlay />}
       </div>
     </AddDropContext.Provider>
   );
