@@ -11,7 +11,8 @@ import type { SupportedStorage } from "@supabase/supabase-js";
  *
  * The Preferences API is asynchronous, so the adapter keeps an in-memory
  * mirror loaded at boot and writes through in the background — reads stay
- * synchronous and correct after the initial load.
+ * synchronous and correct after the initial load. Auth boot awaits `ready`
+ * before reading the session so a cold start can never race the hydrate.
  */
 
 function isNative(): boolean {
@@ -23,10 +24,8 @@ function isNative(): boolean {
 
 class CapacitorPreferencesAdapter implements SupportedStorage {
   private cache = new Map<string, string | null>();
-
-  constructor() {
-    void this.hydrate();
-  }
+  /** Resolves once Preferences have been hydrated into the sync cache. */
+  readonly ready: Promise<void> = this.hydrate();
 
   private async hydrate() {
     try {
@@ -59,6 +58,9 @@ class CapacitorPreferencesAdapter implements SupportedStorage {
 }
 
 class LocalStorageAdapter implements SupportedStorage {
+  /** localStorage is synchronous — resolves immediately. */
+  readonly ready: Promise<void> = Promise.resolve();
+
   getItem(key: string): string | null {
     try {
       return window.localStorage.getItem(key);
@@ -84,6 +86,13 @@ class LocalStorageAdapter implements SupportedStorage {
   }
 }
 
-export const supabaseStorageAdapter: SupportedStorage = isNative()
+export const supabaseStorageAdapter: SupportedStorage & { ready: Promise<void> } = isNative()
   ? new CapacitorPreferencesAdapter()
   : new LocalStorageAdapter();
+
+/**
+ * Resolves when the session storage has been hydrated (native boot). Auth
+ * boot awaits this before reading the session so a cold start never races the
+ * async Preferences hydrate and incorrectly signs the user out.
+ */
+export const storageAdapterReady: Promise<void> = supabaseStorageAdapter.ready;

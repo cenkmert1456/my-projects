@@ -20,12 +20,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep links: drop://drop/123 -->
+            <!-- Deep links: drop://drop/123, drop://auth/callback, drop://search …
+                 Scheme-only so every host under the drop:// scheme is caught
+                 (auth callbacks use host "auth"). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="drop" android:host="drop" />
+                <data android:scheme="drop" />
             </intent-filter>
 
             <!-- Share to DROP: text / URLs (Instagram, TikTok, browsers…) -->

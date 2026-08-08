@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtimeQuery } from "@/hooks/use-realtime-query";
 import { dropService, profileService, stackService, storageService } from "@/lib/services";
+import { authErrorMessage } from "@/lib/supabase/auth-errors";
 import {
   Camera,
   FileUp,
@@ -207,7 +208,7 @@ export function AddDropSheet({
       close();
       if (ids.length) navigate(`/app/drop/${ids[0]}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Your files were not lost — try again.");
+      setError(authErrorMessage(err, "Something went wrong. Your files were not lost — try again."));
       setMode("choose");
       setUploading(false);
     }
@@ -248,7 +249,7 @@ export function AddDropSheet({
       });
       handleResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save that link.");
+      setError(authErrorMessage(err, "Could not save that link."));
       setMode("link");
       setUploading(false);
     }
@@ -264,7 +265,7 @@ export function AddDropSheet({
       const result = await dropService.create(userId, { kind: "note", text: note.trim() });
       handleResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save that note.");
+      setError(authErrorMessage(err, "Could not save that note."));
       setMode("note");
       setUploading(false);
     }

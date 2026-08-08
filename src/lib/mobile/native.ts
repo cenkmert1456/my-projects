@@ -408,11 +408,11 @@ export async function lockPortrait(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Deep links (incoming URLs like drop://drop/123)
+// Deep links (incoming URLs like drop://drop/123, drop://auth/callback)
 // ---------------------------------------------------------------------------
 
 export interface DeepLink {
-  path: string; // e.g. "drop/123" or "collection/abc"
+  path: string; // e.g. "drop/123", "collection/abc" or "auth/callback"
   query: Record<string, string>;
   /** Full original URL (includes any #fragment — used for auth callbacks). */
   raw?: string;
@@ -422,7 +422,12 @@ export interface DeepLink {
 export function parseDeepLink(url: string): DeepLink | null {
   try {
     const u = new URL(url);
-    const path = u.pathname.replace(/^\//, "");
+    // Combine host + pathname so both drop://drop/123 (host "drop") and
+    // drop://auth/callback (host "auth") resolve into the single `path`
+    // vocabulary ("drop/123", "auth/callback") the route handlers expect.
+    const host = u.hostname;
+    const pathname = u.pathname.replace(/^\//, "");
+    const path = [host, pathname].filter(Boolean).join("/");
     const query: Record<string, string> = {};
     u.searchParams.forEach((v, k) => {
       query[k] = v;

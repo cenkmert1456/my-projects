@@ -1,19 +1,25 @@
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-
-import { DropMark, Logo } from "@/components/Logo";
-import { useAuth } from "@/hooks/use-auth";
-import { ArrowRight, Loader2, Lock, Mail, MailCheck, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { useAuth } from "@/hooks/use-auth";
+import { haptic } from "@/lib/mobile/native";
+import { cn } from "@/lib/utils";
+import { DropMark } from "@/components/Logo";
+import { GoogleIcon } from "@/components/auth/GoogleIcon";
+import { BootScreen } from "@/components/app/BootScreen";
+import { ConfigErrorScreen } from "@/components/app/ConfigErrorScreen";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  Mail,
+  MailCheck,
+  User,
+} from "lucide-react";
 
 interface AuthProps {
   redirectAfterAuth?: string;
@@ -28,13 +34,26 @@ function resolveRedirectAfterAuth(returnTo: string | null, fallback = "/app") {
 
 type Mode = "signIn" | "signUp" | "forgot" | "reset" | "confirm";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function maskEmail(email: string): string {
+  const [local = "", domain] = email.split("@");
+  if (!domain) return email;
+  const head = local.slice(0, 2);
+  const dots = "•".repeat(Math.min(6, Math.max(3, local.length - 2)));
+  return `${head}${dots}@${domain}`;
+}
+
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const {
+    startupState,
     isLoading: authLoading,
     isAuthenticated,
     signIn,
     signUp,
+    signInWithGoogle,
     resetPassword,
+    resendConfirmation,
     updatePassword,
     translateError,
   } = useAuth();
@@ -45,35 +64,67 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [name, setName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; name?: string }>({});
   const [sent, setSent] = useState(false);
+  const [resent, setResent] = useState(false);
 
   // Password-reset callback from Supabase.
-  //   * web: email link → /auth#access_token=…&type=recovery
+  //   * web: email link → /auth?mode=reset&code=…
   //   * native: deep link handler exchanged the token then navigated to /auth?mode=reset
+  //   * implicit fallback: /auth#access_token=…&type=recovery
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.includes("type=recovery") || searchParams.get("mode") === "reset") {
+    if (
+      hash.includes("type=recovery") ||
+      searchParams.get("mode") === "reset" ||
+      searchParams.get("type") === "recovery"
+    ) {
       setMode("reset");
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, [searchParams]);
 
+  // Once the session is known to exist, leave the auth screen (unless the
+  // user is mid password-reset, which needs the session to stay here).
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      navigate(redirect);
+    if (authLoading) return;
+    if (mode === "reset") return;
+    if (isAuthenticated) navigate(redirect, { replace: true });
+  }, [authLoading, isAuthenticated, navigate, redirect, mode]);
+
+  // Startup gate: never flash the form before the session is known.
+  if (startupState === "BOOTING") return <BootScreen />;
+  if (startupState === "FATAL_CONFIGURATION_ERROR") return <ConfigErrorScreen />;
+
+  const clearFieldError = (key: keyof typeof fieldErrors) =>
+    setFieldErrors((f) => ({ ...f, [key]: undefined }));
+
+  const validate = (): boolean => {
+    const next: { email?: string; password?: string; name?: string } = {};
+    if (mode !== "forgot") {
+      if (!EMAIL_RE.test(email.trim())) next.email = "Enter a valid email address.";
+      if (!password || password.length < 6) next.password = "Password must be at least 6 characters.";
+      if (mode === "signUp" && password !== passwordConfirm) next.password = "Passwords don't match.";
     }
-  }, [authLoading, isAuthenticated, navigate, redirect]);
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
   const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isLoading) return;
+    if (!validate()) return;
     setIsLoading(true);
     setError(null);
+    haptic("light");
     try {
       await signIn({ email, password });
-      navigate(redirect);
+      // navigate(redirect) happens via the effect once the session lands
     } catch (err) {
       setError(translateError(err));
       setIsLoading(false);
@@ -82,17 +133,17 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
   const handleSignUp = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isLoading) return;
+    if (!validate()) return;
     setIsLoading(true);
     setError(null);
+    haptic("light");
     try {
-      const { requiresEmailConfirmation } = await signUp({ email, password, name: name || undefined });
+      const { requiresEmailConfirmation } = await signUp({ email, password, name: name.trim() || undefined });
       if (requiresEmailConfirmation) {
-        // Email confirmation is enabled — never navigate into a session that
-        // doesn't exist yet. Show a clear "check your email" state instead.
         setMode("confirm");
-      } else {
-        navigate(redirect);
       }
+      // otherwise the session effect navigates to Home
     } catch (err) {
       setError(translateError(err));
       setIsLoading(false);
@@ -101,6 +152,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
   const handleForgot = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isLoading) return;
+    if (!EMAIL_RE.test(email.trim())) {
+      setFieldErrors({ email: "Enter a valid email address." });
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -115,13 +171,52 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
   const handleReset = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isLoading) return;
+    if (password.length < 6) {
+      setFieldErrors({ password: "Password must be at least 6 characters." });
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setFieldErrors({ password: "Passwords don't match." });
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       await updatePassword(password);
-      setMode("signIn");
-      setPassword("");
-      setError(null);
+      haptic("success");
+      navigate("/app", { replace: true });
+    } catch (err) {
+      setError(translateError(err));
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    setError(null);
+    haptic("light");
+    try {
+      await signInWithGoogle();
+      // Native: returns once the custom tab opens — release the button so the
+      // user can retry after returning from Google. Web: page redirects away.
+      setIsLoading(false);
+    } catch (err) {
+      setError(translateError(err));
+      setIsLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      await resendConfirmation(email);
+      setResent(true);
+      haptic("success");
+      setIsLoading(false);
     } catch (err) {
       setError(translateError(err));
       setIsLoading(false);
@@ -132,336 +227,392 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setMode(m);
     setError(null);
     setSent(false);
+    setResent(false);
+    setFieldErrors({});
   };
 
+  const field = "h-12 rounded-2xl border-border/80 bg-card pl-11 text-[15px]";
+
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4">
-      {/* Ambient glow */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 left-1/2 h-96 w-[600px] -translate-x-1/2 rounded-full bg-primary/12 blur-[110px]" />
+    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-background">
+      {/* Ambient background */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -top-40 left-1/2 h-80 w-[42rem] -translate-x-1/2 rounded-full bg-primary/12 blur-[120px]" />
+        <div className="absolute -bottom-32 -right-24 h-72 w-72 rounded-full bg-blue-500/8 blur-[100px]" />
       </div>
 
-      <button
-        type="button"
-        onClick={() => navigate("/")}
-        className="relative mb-8 cursor-pointer"
-        aria-label="Back to home"
-      >
-        <Logo />
-      </button>
+      {/* Header */}
+      <header className="relative flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))]">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="flex cursor-pointer items-center gap-2.5 animate-drop-fade-up"
+          aria-label="DROP home"
+        >
+          <DropMark className="h-9 w-9" />
+          <span className="text-lg font-extrabold tracking-[0.06em] text-foreground">DROP</span>
+        </button>
+        {mode !== "signIn" && (
+          <button
+            type="button"
+            onClick={() => switchMode("signIn")}
+            className="cursor-pointer text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Back
+          </button>
+        )}
+      </header>
 
-      <Card className="relative w-full max-w-sm rounded-3xl border border-border/80 bg-card/90 shadow-none backdrop-blur-xl">
-        {mode === "signIn" && (
-          <>
-            <CardHeader className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12">
-                <DropMark className="h-7 w-7" />
+      {/* Content */}
+      <main className="relative flex flex-1 flex-col justify-center px-6 pb-8">
+        <div key={mode} className="animate-drop-fade-up">
+          {/* Headline */}
+          {mode !== "reset" && mode !== "confirm" && (
+            <div className="mb-8">
+              <h1 className="text-[34px] font-extrabold leading-[1.1] tracking-tight text-foreground">
+                Remember everything.
+              </h1>
+              <p className="mt-2 text-[15px] text-muted-foreground">
+                Save anything. DROP finds it later.
+              </p>
+            </div>
+          )}
+
+          {/* Google */}
+          {(mode === "signIn" || mode === "signUp") && (
+            <>
+              <button
+                type="button"
+                onClick={handleGoogle}
+                disabled={isLoading}
+                className="flex h-[52px] w-full cursor-pointer items-center justify-center gap-3 rounded-2xl border border-border bg-white text-[15px] font-semibold text-neutral-800 shadow-sm transition-all hover:bg-neutral-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
+                ) : (
+                  <GoogleIcon className="h-5 w-5" />
+                )}
+                Continue with Google
+              </button>
+
+              <div className="my-6 flex items-center gap-4" aria-hidden="true">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">or</span>
+                <span className="h-px flex-1 bg-border" />
               </div>
-              <CardTitle className="mt-4 text-2xl font-extrabold tracking-tight">
-                Welcome back to your memory.
-              </CardTitle>
-              <CardDescription className="mx-auto max-w-xs text-sm">
-                Sign in to find everything you've dropped — screenshots, links,
-                products and places.
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleSignIn}>
-              <CardContent className="space-y-4">
+            </>
+          )}
+
+          {/* Sign in / Sign up */}
+          {(mode === "signIn" || mode === "signUp") && (
+            <form onSubmit={mode === "signIn" ? handleSignIn : handleSignUp} noValidate className="space-y-3.5">
+              {mode === "signUp" && (
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    type="email"
-                    className="h-11 rounded-xl pl-10"
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      clearFieldError("name");
+                    }}
+                    placeholder="Your name"
+                    className={field}
                     disabled={isLoading}
-                    required
-                    autoComplete="email"
+                    autoComplete="name"
+                    autoCapitalize="words"
                   />
                 </div>
+              )}
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearFieldError("email");
+                  }}
+                  placeholder="name@example.com"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  className={cn(field, fieldErrors.email && "border-red-500/60")}
+                  disabled={isLoading}
+                />
+              </div>
+              {fieldErrors.email && <FieldError message={fieldErrors.email} />}
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFieldError("password");
+                  }}
+                  placeholder={mode === "signUp" ? "Password (6+ characters)" : "Password"}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete={mode === "signUp" ? "new-password" : "current-password"}
+                  className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                </button>
+              </div>
+              {mode === "signUp" && (
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                  <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password"
-                    type="password"
-                    className="h-11 rounded-xl pl-10"
+                    value={passwordConfirm}
+                    onChange={(e) => {
+                      setPasswordConfirm(e.target.value);
+                      clearFieldError("password");
+                    }}
+                    placeholder="Confirm password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
                     disabled={isLoading}
-                    required
-                    autoComplete="current-password"
                   />
                 </div>
-                <div className="flex justify-end">
-                  <Button
+              )}
+              {fieldErrors.password && <FieldError message={fieldErrors.password} />}
+
+              {mode === "signIn" && (
+                <div className="flex justify-end pt-0.5">
+                  <button
                     type="button"
-                    variant="link"
-                    className="h-auto p-0 text-xs"
                     onClick={() => switchMode("forgot")}
+                    className="cursor-pointer text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
                   >
                     Forgot password?
-                  </Button>
+                  </button>
                 </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button
-                  type="submit"
-                  className="h-11 w-full gap-2 rounded-xl font-semibold"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      Sign in <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </form>
-            <CardFooter className="flex-col gap-2 pb-6">
-              <div className="relative w-full">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">New to DROP?</span>
-                </div>
-              </div>
+              )}
+
+              {error && <InlineError message={error} />}
+
               <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-full gap-2 rounded-xl"
-                onClick={() => switchMode("signUp")}
+                type="submit"
                 disabled={isLoading}
+                className="mt-1 h-[52px] w-full gap-2 rounded-2xl text-[15px] font-semibold shadow-none"
               >
-                <UserX className="h-4 w-4" />
-                Create an account
+                {isLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <>
+                    {mode === "signIn" ? "Sign in" : "Create account"}
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
-            </CardFooter>
-          </>
-        )}
-
-        {mode === "signUp" && (
-          <>
-            <CardHeader className="text-center">
-              <CardTitle className="text-xl font-extrabold tracking-tight">
-                Create your account
-              </CardTitle>
-              <CardDescription>
-                Save anything. DROP figures out the rest.
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleSignUp}>
-              <CardContent className="space-y-4">
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name (optional)"
-                  className="h-11 rounded-xl"
-                  disabled={isLoading}
-                  autoComplete="name"
-                />
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    type="email"
-                    className="h-11 rounded-xl pl-10"
-                    disabled={isLoading}
-                    required
-                    autoComplete="email"
-                  />
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password (min 6 characters)"
-                    type="password"
-                    minLength={6}
-                    className="h-11 rounded-xl pl-10"
-                    disabled={isLoading}
-                    required
-                    autoComplete="new-password"
-                  />
-                </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button
-                  type="submit"
-                  className="h-11 w-full gap-2 rounded-xl font-semibold"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      Create account <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </Button>
-              </CardContent>
             </form>
-            <CardFooter className="pb-6">
-              <Button
-                type="button"
-                variant="link"
-                className="mx-auto h-auto p-0 text-xs"
-                onClick={() => switchMode("signIn")}
-              >
-                Already have an account? Sign in
-              </Button>
-            </CardFooter>
-          </>
-        )}
+          )}
 
-        {mode === "forgot" && (
-          <>
-            <CardHeader className="text-center">
-              <CardTitle className="text-xl font-extrabold tracking-tight">
-                Reset your password
-              </CardTitle>
-              <CardDescription>
-                {sent
-                  ? "Check your inbox — we've sent you a reset link."
-                  : "Enter your email and we'll send you a reset link."}
-              </CardDescription>
-            </CardHeader>
-            {!sent ? (
-              <form onSubmit={handleForgot}>
-                <CardContent className="space-y-4">
+          {/* Forgot password */}
+          {mode === "forgot" && (
+            <>
+              {!sent ? (
+                <form onSubmit={handleForgot} noValidate className="space-y-3.5">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Enter your email and we'll send you a link to reset your password.
+                  </p>
                   <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        clearFieldError("email");
+                      }}
                       placeholder="name@example.com"
                       type="email"
-                      className="h-11 rounded-xl pl-10"
+                      inputMode="email"
+                      autoComplete="email"
+                      className={cn(field, fieldErrors.email && "border-red-500/60")}
                       disabled={isLoading}
-                      required
                     />
                   </div>
-                  {error && <p className="text-sm text-red-500">{error}</p>}
-                  <Button
-                    type="submit"
-                    className="h-11 w-full gap-2 rounded-xl font-semibold"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        Send reset link <ArrowRight className="h-4 w-4" />
-                      </>
-                    )}
+                  {fieldErrors.email && <FieldError message={fieldErrors.email} />}
+                  {error && <InlineError message={error} />}
+                  <Button type="submit" disabled={isLoading} className="mt-1 h-[52px] w-full gap-2 rounded-2xl text-[15px] font-semibold shadow-none">
+                    {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Send reset link <ArrowRight className="h-4 w-4" /></>}
                   </Button>
-                </CardContent>
-              </form>
-            ) : (
-              <CardContent>
+                </form>
+              ) : (
+                <div className="flex flex-col items-center gap-4 rounded-3xl border border-border/70 bg-card/60 px-6 py-10 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/12">
+                    <MailCheck className="h-7 w-7 text-emerald-600 dark:text-emerald-300" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold tracking-tight">Check your inbox</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      We sent a reset link to <span className="font-semibold text-foreground">{maskEmail(email)}</span>.
+                    </p>
+                  </div>
+                  <Button variant="outline" className="w-full rounded-2xl" onClick={() => switchMode("signIn")}>
+                    Back to sign in
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Check your email (signup confirmation) */}
+          {mode === "confirm" && (
+            <div className="flex flex-col items-center gap-5 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-500/12">
+                <MailCheck className="h-8 w-8 text-emerald-600 dark:text-emerald-300" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">Check your inbox</h2>
+                <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
+                  We sent a confirmation link to{" "}
+                  <span className="font-semibold text-foreground">{maskEmail(email)}</span>.
+                  Tap it to activate your account — then you're in.
+                </p>
+              </div>
+              {resent && (
+                <p className="flex items-center gap-1.5 rounded-2xl bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle2 className="h-4 w-4" /> Email resent
+                </p>
+              )}
+              {error && <InlineError message={error} />}
+              <div className="w-full space-y-2.5">
+                <Button
+                  type="button"
+                  className="h-[52px] w-full rounded-2xl text-[15px] font-semibold shadow-none"
+                  onClick={() => {
+                    window.location.href = "mailto:";
+                  }}
+                >
+                  Open email app
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 w-full rounded-xl"
-                  onClick={() => switchMode("signIn")}
-                >
-                  Back to sign in
-                </Button>
-              </CardContent>
-            )}
-            <CardFooter className="pb-6">
-              <Button
-                type="button"
-                variant="link"
-                className="mx-auto h-auto p-0 text-xs"
-                onClick={() => switchMode("signIn")}
-              >
-                Remembered it? Sign in
-              </Button>
-            </CardFooter>
-          </>
-        )}
-
-        {mode === "confirm" && (
-          <>
-            <CardHeader className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/12">
-                <MailCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-300" />
-              </div>
-              <CardTitle className="mt-4 text-xl font-extrabold tracking-tight">
-                Check your email to continue
-              </CardTitle>
-              <CardDescription className="mx-auto max-w-xs">
-                We've sent a confirmation link to <span className="font-semibold">{email}</span>.
-                Tap it to activate your account, then sign in.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button
-                type="button"
-                className="h-11 w-full gap-2 rounded-xl font-semibold"
-                onClick={() => {
-                  setMode("signIn");
-                  setEmail("");
-                }}
-              >
-                Sign in <ArrowRight className="h-4 w-4" />
-              </Button>
-            </CardContent>
-          </>
-        )}
-
-        {mode === "reset" && (
-          <>
-            <CardHeader className="text-center">
-              <CardTitle className="text-xl font-extrabold tracking-tight">
-                Choose a new password
-              </CardTitle>
-            </CardHeader>
-            <form onSubmit={handleReset}>
-              <CardContent className="space-y-4">
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="New password (min 6 characters)"
-                    type="password"
-                    minLength={6}
-                    className="h-11 rounded-xl pl-10"
-                    disabled={isLoading}
-                    required
-                    autoComplete="new-password"
-                  />
-                </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button
-                  type="submit"
-                  className="h-11 w-full gap-2 rounded-xl font-semibold"
+                  className="h-[52px] w-full gap-2 rounded-2xl text-[15px]"
+                  onClick={handleResend}
                   disabled={isLoading}
                 >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      Update password <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Resend email
                 </Button>
-              </CardContent>
-            </form>
-          </>
-        )}
-      </Card>
+                <button
+                  type="button"
+                  onClick={() => {
+                    switchMode("signUp");
+                    setEmail("");
+                    setPassword("");
+                    setPasswordConfirm("");
+                  }}
+                  className="w-full cursor-pointer pt-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Use a different email
+                </button>
+              </div>
+            </div>
+          )}
 
-      <p className="relative mt-6 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Lock className="h-3 w-3" /> Private by default. Nothing you save is ever public.
-      </p>
+          {/* New password (recovery) */}
+          {mode === "reset" && (
+            <form onSubmit={handleReset} noValidate className="space-y-3.5">
+              <h1 className="text-[28px] font-extrabold leading-tight tracking-tight">Choose a new password</h1>
+              <p className="text-sm text-muted-foreground">At least 6 characters. Make it memorable — not guessable.</p>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFieldError("password");
+                  }}
+                  placeholder="New password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={passwordConfirm}
+                  onChange={(e) => {
+                    setPasswordConfirm(e.target.value);
+                    clearFieldError("password");
+                  }}
+                  placeholder="Confirm new password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
+                  disabled={isLoading}
+                />
+              </div>
+              {fieldErrors.password && <FieldError message={fieldErrors.password} />}
+              {error && <InlineError message={error} />}
+              <Button type="submit" disabled={isLoading} className="mt-1 h-[52px] w-full gap-2 rounded-2xl text-[15px] font-semibold shadow-none">
+                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Update password <ArrowRight className="h-4 w-4" /></>}
+              </Button>
+            </form>
+          )}
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="relative flex flex-col items-center gap-3 px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        {(mode === "signIn" || mode === "signUp") && (
+          <button
+            type="button"
+            onClick={() => switchMode(mode === "signIn" ? "signUp" : "signIn")}
+            className="cursor-pointer text-sm font-semibold text-foreground"
+          >
+            {mode === "signIn" ? (
+              <>
+                New to DROP?{" "}
+                <span className="font-bold text-primary">Create account</span>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <span className="font-bold text-primary">Sign in</span>
+              </>
+            )}
+          </button>
+        )}
+        <p className="text-center text-[11px] leading-relaxed text-muted-foreground/80">
+          By continuing you agree to DROP's Terms &amp; Privacy Policy.
+          <br />
+          Private by default — nothing you save is ever public.
+        </p>
+      </footer>
     </div>
+  );
+}
+
+function FieldError({ message }: { message: string }) {
+  return <p className="-mt-1.5 pl-1 text-[13px] font-medium text-red-500">{message}</p>;
+}
+
+function InlineError({ message }: { message: string }) {
+  return (
+    <p className="rounded-2xl bg-red-500/10 px-4 py-2.5 text-[13px] font-medium leading-snug text-red-600 dark:text-red-300">
+      {message}
+    </p>
   );
 }
 

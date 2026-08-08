@@ -157,3 +157,68 @@
     @apply rounded-full bg-border;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* DROP motion — boot splash, auth entrances, subtle micro-interactions. */
+/* ------------------------------------------------------------------ */
+
+@keyframes drop-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes drop-splash {
+  0% {
+    transform: translateY(-8px);
+    opacity: 0.4;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes drop-ping {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.5;
+  }
+  80%,
+  100% {
+    transform: scale(1.12);
+    opacity: 0;
+  }
+}
+
+@keyframes drop-ping-slow {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.4;
+  }
+  80%,
+  100% {
+    transform: scale(1.22);
+    opacity: 0;
+  }
+}
+
+@layer utilities {
+  .animate-drop-fade-up {
+    animation: drop-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-drop-splash {
+    animation: drop-splash 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-drop-ping {
+    animation: drop-ping 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+  .animate-drop-ping-slow {
+    animation: drop-ping-slow 1.8s 0.35s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+}

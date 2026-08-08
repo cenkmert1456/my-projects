@@ -72,16 +72,24 @@ export default function Home() {
     <div className="space-y-7 lg:space-y-8">
       {/* Greeting — large, touch-first on mobile */}
       <div className="flex items-end justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground">
-            {greeting()}, {firstName}.
-          </p>
-          <h1 className="mt-1 text-[26px] font-extrabold leading-tight tracking-tight sm:text-3xl">
-            Search your memory
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground sm:hidden">
-            Everything you saved. Finally findable.
-          </p>
+        <div className="flex min-w-0 items-center gap-3.5">
+          <button
+            type="button"
+            onClick={() => navigate("/app/profile")}
+            className="relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary/15 text-base font-bold text-primary transition-transform active:scale-95"
+            aria-label="Your profile"
+          >
+            {(user?.name ?? user?.email ?? "D")[0]?.toUpperCase()}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full border-2 border-background bg-emerald-500" />
+          </button>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-muted-foreground">
+              {greeting()}, {firstName}.
+            </p>
+            <h1 className="mt-0.5 truncate text-[26px] font-extrabold leading-tight tracking-tight sm:text-3xl">
+              Search your memory
+            </h1>
+          </div>
         </div>
         <Button
           onClick={openAdd}
@@ -168,7 +176,7 @@ export default function Home() {
           </button>
         </div>
         {recent.data.length === 0 ? (
-          <EmptyHome onAdd={openAdd} />
+          <EmptyHome onAdd={openAdd} onKind={(k) => openWithKind?.(k)} />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {recent.data.map((drop, i) => (
@@ -217,21 +225,40 @@ export default function Home() {
   );
 }
 
-function EmptyHome({ onAdd }: { onAdd: () => void }) {
+function EmptyHome({
+  onAdd,
+  onKind,
+}: {
+  onAdd: () => void;
+  onKind: (kind: (typeof QUICK_ACTIONS)[number]["kind"]) => void;
+}) {
   return (
-    <div className="flex flex-col items-center rounded-3xl border border-dashed border-border bg-card/40 px-6 py-14 text-center">
+    <div className="flex flex-col items-center rounded-3xl border border-dashed border-border bg-card/40 px-6 py-12 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12 text-primary">
         <Plus className="h-7 w-7" />
       </div>
-      <h3 className="mt-4 text-lg font-bold tracking-tight">Nothing saved yet</h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Drop a screenshot, a link, a product, a place — DROP understands it and
-        you'll find it with a plain sentence later.
+      <h3 className="mt-4 text-xl font-bold tracking-tight">Your memory starts here</h3>
+      <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-muted-foreground">
+        Save anything — a screenshot, a link, a product, a place. DROP
+        understands it automatically and finds it later with a plain sentence.
       </p>
-      <Button onClick={onAdd} className="mt-5 gap-2 rounded-2xl font-semibold">
+      <Button onClick={onAdd} className="mt-6 h-12 gap-2 rounded-2xl px-6 font-semibold">
         <Plus className="h-4 w-4" strokeWidth={3} />
-        Drop Something
+        Add your first DROP
       </Button>
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
+        {QUICK_ACTIONS.map((action) => (
+          <button
+            key={action.kind}
+            type="button"
+            onClick={() => onKind(action.kind)}
+            className="flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-card px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition-all hover:border-primary/40 hover:text-foreground active:scale-[0.98]"
+          >
+            <action.icon className="h-3.5 w-3.5 text-primary" />
+            {action.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

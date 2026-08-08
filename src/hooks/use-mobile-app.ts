@@ -1,10 +1,12 @@
 // useMobileApp — one hook that wires every native capability into the app:
 //
-//   - deep links (drop://drop/123 → navigate to the Drop)
+//   - deep links (drop://drop/123 → navigate to the Drop; auth callbacks are
+//     delegated to the global AuthCallbackHandler so they work on /auth too)
 //   - incoming shares (Android share intents → open capture preview)
 //   - offline / online detection (subtle banner + upload queue flush)
 //   - app resume → refresh relevant state
 //   - status bar theme + portrait lock (native)
+//   - Android hardware back button (close state, go back, or exit)
 //   - app lock (biometrics after inactivity)
 
 import { useEffect, useRef, useState } from "react";
@@ -13,10 +15,9 @@ import { useTheme } from "next-themes";
 import { dropService, storageService } from "@/lib/services";
 import {
   isNative,
-  parseDeepLink,
-  pollIncomingShare,
   registerDeepLinkListener,
   registerIncomingShareListener,
+  pollIncomingShare,
   setStatusBarStyle,
   lockPortrait,
   type IncomingShare,
@@ -122,38 +123,16 @@ export function useMobileApp() {
     void flush();
   }, [online, isAuthenticated, userId]);
 
-  // Deep links: drop://drop/123, drop://collection/abc,
-  // and Supabase auth callbacks (drop://auth/callback#access_token=…&type=recovery).
+  // Deep links for product routes only. Auth callbacks
+  // (drop://drop/auth/callback#…code… or …type=recovery) are handled by the
+  // global AuthCallbackHandler mounted in main.tsx so they also work while
+  // the user is on the Auth screen.
   useEffect(() => {
     const onDeepLink = async (link: { path: string; query: Record<string, string>; raw?: string }) => {
       void markActive();
       const [first, second] = link.path.split("/");
 
-      // Supabase email links (recovery / confirmation) deep-link here on native.
-      if (first === "auth" && (second === "callback" || second === "verify" || second === "reset-password")) {
-        const { supabase } = await import("@/lib/supabase/client");
-        const raw = link.raw ?? "";
-        const frag = new URLSearchParams(raw.split("#")[1] ?? "");
-        const type = frag.get("type") ?? link.query.type ?? "";
-        const code = frag.get("code") ?? link.query.code ?? "";
-        const accessToken = frag.get("access_token") ?? "";
-        const refreshToken = frag.get("refresh_token") ?? "";
-        try {
-          if (accessToken) {
-            await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            } as never);
-          } else if (code) {
-            await supabase.auth.exchangeCodeForSession(code);
-          }
-        } catch {
-          // session exchange failed — fall through to the auth page
-        }
-        if (type === "recovery") navigate("/auth?mode=reset");
-        else navigate("/app");
-        return;
-      }
+      if (first === "auth") return; // global handler owns auth callbacks
 
       if (first === "drop" && second) navigate(`/app/drop/${second}`);
       else if (first === "collection" && second) navigate(`/app/collections/${second}`);
@@ -213,6 +192,26 @@ export function useMobileApp() {
       disposed = true;
     };
   }, []);
+
+  // Android hardware back button: navigate history back when possible,
+  // otherwise exit the app (never bounce to Login).
+  useEffect(() => {
+    if (!isNative()) return;
+    let disposed = false;
+    void import("@capacitor/app").then(({ App }) => {
+      if (disposed) return;
+      void App.addListener("backButton", ({ canGoBack }) => {
+        if (canGoBack) {
+          window.history.back();
+        } else {
+          void App.exitApp();
+        }
+      });
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [navigate]);
 
   // Local notification tap → open the relevant Drop (deep link behaviour).
   useEffect(() => {

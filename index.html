@@ -24,9 +24,49 @@
       href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap"
       rel="stylesheet"
     />
+    <style>
+      /* Inline boot splash — shown instantly (before React mounts) so the
+         native splash → HTML → React chain never flashes white. Removed by
+         main.tsx on first render. */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #15130f;
+      }
+      #boot-splash svg {
+        width: 64px;
+        height: 64px;
+        animation: boot-pulse 1.6s ease-in-out infinite;
+      }
+      #boot-splash span {
+        color: #f5f1ea;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+      }
+      @keyframes boot-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(0.96); opacity: 0.85; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot-splash" aria-hidden="true">
+      <svg viewBox="0 0 64 64">
+        <rect width="64" height="64" rx="17" fill="#e84c1f" />
+        <path d="M32 11c8.5 10.5 17 18.4 17 28.4A17 17 0 0 1 15 39.4C15 29.4 23.5 21.5 32 11z" fill="#fff" />
+        <circle cx="32" cy="39" r="6.5" fill="#e84c1f" opacity="0.9" />
+      </svg>
+      <span>DROP</span>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

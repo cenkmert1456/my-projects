@@ -10,18 +10,25 @@ import type { Database } from "./database.types";
  * put the service-role key in frontend code.
  */
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-// Both names are accepted — newer Supabase SDKs/docs call it the
-// "publishable" key; older projects use VITE_SUPABASE_ANON_KEY.
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
+// Canonical public key variable: VITE_SUPABASE_PUBLISHABLE_KEY. The legacy
+// VITE_SUPABASE_ANON_KEY name is still accepted so existing key
+// configurations keep working — both carry the same anon/publishable key.
 const SUPABASE_ANON_KEY =
   (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ??
-  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ??
+  "";
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+export const isSupabaseConfigured = Boolean(
+  SUPABASE_URL &&
+    SUPABASE_ANON_KEY &&
+    !SUPABASE_URL.includes("placeholder") &&
+    !SUPABASE_ANON_KEY.includes("placeholder"),
+);
 
 export const supabase: SupabaseClient<Database> = createClient<Database>(
-  SUPABASE_URL ?? "https://placeholder.supabase.co",
-  SUPABASE_ANON_KEY ?? "placeholder-anon-key",
+  SUPABASE_URL || "https://placeholder.supabase.co",
+  SUPABASE_ANON_KEY || "placeholder-anon-key",
   {
     auth: {
       storage: supabaseStorageAdapter,

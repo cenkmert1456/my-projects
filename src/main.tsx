@@ -2,6 +2,7 @@ import "@vly-ai/integrations";
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
+import { AuthCallbackHandler } from "@/components/auth/AuthCallbackHandler";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { ThemeProvider } from "next-themes";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
@@ -100,6 +101,14 @@ class RootErrorBoundary extends React.Component<
 
 function RouteSyncer() {
   const location = useLocation();
+
+  // Remove the inline HTML boot splash as soon as React has mounted so the
+  // native splash → HTML splash → React boot chain never shows a white frame.
+  useEffect(() => {
+    const el = document.getElementById("boot-splash");
+    if (el) el.remove();
+  }, []);
+
   useEffect(() => {
     window.parent.postMessage(
       { type: "iframe-route-change", path: location.pathname },
@@ -131,6 +140,7 @@ createRoot(document.getElementById("root")!).render(
         <AuthProvider>
           <BrowserRouter>
             <RouteSyncer />
+            <AuthCallbackHandler />
             <Suspense fallback={<RouteLoading />}>
               <Routes>
                 <Route path="/" element={<Landing />} />

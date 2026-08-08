@@ -74,7 +74,7 @@ Point the app at your Supabase project with two public env vars
 
 ```bash
 VITE_SUPABASE_URL=https://<project>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon key>
+VITE_SUPABASE_PUBLISHABLE_KEY=<anon/publishable key>
 ```
 
 Then provision the database **automatically** — tables, RLS policies, storage
@@ -320,7 +320,7 @@ Backend     →  the same Supabase backend (one shared database)
 
 ```bash
 bun install
-export VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=…
+export VITE_SUPABASE_URL=… VITE_SUPABASE_PUBLISHABLE_KEY=…
 bun run build               # production web build → dist/
 npx cap sync                # copy web build + plugins into android/ & ios/
 ```
@@ -433,7 +433,7 @@ For production:
 
 1. Create a Supabase project (or use an existing one).
 2. Add `SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF` (and
-   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`) to the Freebuff Keys tab.
+   `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`) to the Freebuff Keys tab.
 3. Run `npm run supabase:setup` — this **applies** every migration
    automatically (tables, RLS, storage buckets, pgvector, triggers, RPC) and
    verifies the result. No manual SQL.

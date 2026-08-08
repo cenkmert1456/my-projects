@@ -4,7 +4,7 @@
  * The raw Supabase messages ("Invalid login credentials", "User already
  * registered") are fine for developers but not for consumers. Every known
  * code/message is translated here; unknown errors fall back to a generic
- * message so users never see "Failed to fetch" or raw JSON.
+ * message so users never see "Failed to fetch", stack traces or raw JSON.
  */
 
 const KNOWN: Array<{ match: RegExp; message: string }> = [
@@ -29,6 +29,10 @@ const KNOWN: Array<{ match: RegExp; message: string }> = [
   { match: /for security purposes/i, message: "Too many failed attempts — try again in a minute." },
   { match: /user not found/i, message: "No account found with that email." },
   { match: /signup not confirmed/i, message: "Please confirm your email first — check your inbox." },
+  { match: /timed out|timedout|abort/i, message: "Connection timed out. Try again." },
+  { match: /offline|no internet|network request failed|load failed|networkerror/i, message: "You're offline — connect to the internet and try again." },
+  { match: /popup closed|popup|oauth|authorization|provider.*denied|access denied/i, message: "Google sign-in didn't complete. Please try again." },
+  { match: /already a registered user|already confirmed|reauthentication/i, message: "This action needs you to sign in again." },
 ];
 
 export function authErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {

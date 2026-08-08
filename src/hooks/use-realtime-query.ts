@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/supabase/auth-errors";
 
 export interface RealtimeQueryOptions {
   /** Table to subscribe to (drops, collections, stacks, reminders, …). */
@@ -56,7 +57,9 @@ export function useRealtimeQuery<T>(
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Could not load data");
+        // Users never see raw Supabase / fetch errors — translate to a calm,
+        // actionable message with a retry affordance.
+        setError(authErrorMessage(err, "Couldn't load your data — pull to refresh."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

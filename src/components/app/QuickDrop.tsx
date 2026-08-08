@@ -9,6 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { dropService, storageService } from "@/lib/services";
+import { authErrorMessage } from "@/lib/supabase/auth-errors";
 import { ImagePlus, Link2, Loader2, Sparkles, StickyNote } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -83,7 +84,7 @@ export function QuickDrop({ open, onOpenChange }: { open: boolean; onOpenChange:
       onOpenChange(false);
       navigate(`/app/drop/${result.dropId}`);
     } catch (err) {
-      toast("Couldn't save that", { description: err instanceof Error ? err.message : "Please try again." });
+      toast("Couldn't save that", { description: authErrorMessage(err, "Please try again.") });
     } finally {
       setBusy(false);
     }
