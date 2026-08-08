@@ -59,10 +59,16 @@ export default function AskDrop() {
     const text = (raw ?? input).trim();
     if (!text || loading) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", text }]);
+    const nextMessages: Msg[] = [...messages, { role: "user", text }];
+    setMessages(nextMessages);
     setLoading(true);
     try {
-      const res = await askDrop({ query: text });
+      // Pass the conversation so follow-ups keep context ("which one is cheaper?").
+      const history = nextMessages
+        .filter((m) => m.text)
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.text as string }))
+        .slice(-8);
+      const res = await askDrop({ query: text, history });
       const sources: Source[] = (res.sources ?? []).map((s) => ({
         id: String(s.id),
         title: s.title,
@@ -145,25 +151,30 @@ export default function AskDrop() {
                 <p className="text-sm font-medium">Based on your Drops:</p>
               )}
               {m.role === "assistant" && m.sources && m.sources.length > 0 && (
-                <div className="mt-2.5 space-y-2">
-                  {m.sources.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => navigate(`/app/drop/${s.id}`)}
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border/70 bg-muted/40 p-2.5 text-left transition-colors hover:border-primary/30"
-                    >
-                      <span className="text-lg">
-                        {CATEGORY_META[s.category ?? "Other"]?.emoji ?? "📦"}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold">{s.title}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {s.facts ?? s.category ?? "Saved item"}
+                <div className="mt-2.5">
+                  <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Based on {m.sources.length} Drop{m.sources.length !== 1 ? "s" : ""}
+                  </p>
+                  <div className="space-y-2">
+                    {m.sources.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => navigate(`/app/drop/${s.id}`)}
+                        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border/70 bg-muted/40 p-2.5 text-left transition-colors hover:border-primary/30"
+                      >
+                        <span className="text-lg">
+                          {CATEGORY_META[s.category ?? "Other"]?.emoji ?? "📦"}
                         </span>
-                      </span>
-                    </button>
-                  ))}
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold">{s.title}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {s.facts ?? s.category ?? "Saved item"}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {m.role === "assistant" && !m.text && m.sources && m.sources.length === 0 && (

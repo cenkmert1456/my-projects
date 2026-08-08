@@ -25,6 +25,11 @@ const Upcoming = lazy(() => import("./pages/app/Upcoming.tsx"));
 const AskDrop = lazy(() => import("./pages/app/AskDrop.tsx"));
 const DropDetail = lazy(() => import("./pages/app/DropDetail.tsx"));
 const Profile = lazy(() => import("./pages/app/Profile.tsx"));
+const Stacks = lazy(() => import("./pages/app/Stacks.tsx"));
+const StackDetail = lazy(() => import("./pages/app/StackDetail.tsx"));
+const Trash = lazy(() => import("./pages/app/Trash.tsx"));
+const Settings = lazy(() => import("./pages/app/Settings.tsx"));
+const Actions = lazy(() => import("./pages/app/Actions.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -153,6 +158,11 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="ask" element={<AskDrop />} />
                   <Route path="drop/:id" element={<DropDetail />} />
                   <Route path="profile" element={<Profile />} />
+                  <Route path="stacks" element={<Stacks />} />
+                  <Route path="stacks/:id" element={<StackDetail />} />
+                  <Route path="trash" element={<Trash />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="actions" element={<Actions />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>

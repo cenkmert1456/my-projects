@@ -10,6 +10,7 @@ export function buildSearchText(input: {
   keywords?: string[];
   tags?: string[];
   text?: string;
+  notes?: string;
   ocrText?: string;
   category?: string;
   subcategory?: string;
@@ -23,7 +24,7 @@ export function buildSearchText(input: {
       if (v && v.trim()) parts.push(v.trim());
     }
   };
-  push(input.title, input.summary);
+  push(input.title, input.summary, input.notes);
   push(...(input.keywords ?? []));
   push(...(input.tags ?? []));
   push(input.text, input.ocrText, input.category, input.subcategory, input.url, input.source);

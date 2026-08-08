@@ -142,6 +142,10 @@ const schema = defineSchema(
       tags: v.array(v.string()),
       starred: v.optional(v.boolean()),
       archived: v.optional(v.boolean()),
+      pinned: v.optional(v.boolean()),
+      sensitive: v.optional(v.boolean()),
+      notes: v.optional(v.string()),
+      deletedAt: v.optional(v.number()), // soft-delete timestamp (trash)
       savedAt: v.number(), // user-perceived save time (ms epoch)
 
       // Processing state
@@ -237,6 +241,37 @@ const schema = defineSchema(
       query: v.string(),
       resultCount: v.optional(v.number()),
     }).index("by_user", ["userId"]),
+
+    // Stacks — active research/context groups (Collections are long-term;
+    // Stacks are "Japan 2027", "New Gaming PC", "Camera Research").
+    stacks: defineTable({
+      userId: v.id("users"),
+      name: v.string(),
+      emoji: v.optional(v.string()),
+      color: v.optional(v.string()),
+      description: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    stackDrops: defineTable({
+      stackId: v.id("stacks"),
+      dropId: v.id("drops"),
+      userId: v.id("users"),
+    })
+      .index("by_stack", ["stackId"])
+      .index("by_drop", ["dropId"])
+      .index("by_user", ["userId"]),
+
+    // Lightweight activity history (saved, analyzed, starred, archived, …).
+    activities: defineTable({
+      userId: v.id("users"),
+      dropId: v.optional(v.id("drops")),
+      action: v.string(),
+      detail: v.optional(v.string()),
+      at: v.number(),
+    })
+      .index("by_user_at", ["userId", "at"])
+      .index("by_drop", ["dropId"]),
 
     // Plan catalog — limits are configurable in the database (see seed.ts).
     plans: defineTable({

@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Archive,
   ArchiveRestore,
@@ -33,18 +33,26 @@ import {
   Calendar,
   Check,
   Copy,
+  Eye,
   ExternalLink,
+  FileText,
   FolderPlus,
   Loader2,
   Lock,
+  MessageSquareText,
   Navigation,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
   RefreshCw,
+  ShieldAlert,
+  Sparkles,
   Star,
   Tag,
   Trash2,
   TrendingDown,
+  Undo2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -62,11 +70,17 @@ export default function DropDetail() {
   const collections = useQuery(api.collections.list);
   const dropCollections = useQuery(api.collections.withDrop, { dropId: id as never });
   const reminders = useQuery(api.reminders.listForDrop, { dropId: id as never });
+  const stacks = useQuery(api.stacks.list);
+  const dropStacks = useQuery(api.stacks.forDrop, { dropId: id as never });
 
   const update = useMutation(api.drops.update);
   const toggleStar = useMutation(api.drops.toggleStar);
   const toggleArchive = useMutation(api.drops.toggleArchive);
-  const removeDrop = useMutation(api.drops.remove);
+  const togglePin = useMutation(api.drops.togglePin);
+  const toggleSensitive = useMutation(api.drops.toggleSensitive);
+  const setNotes = useMutation(api.drops.setNotes);
+  const softRemove = useMutation(api.drops.softRemove);
+  const restore = useMutation(api.drops.restore);
   const addTag = useMutation(api.drops.addTag);
   const removeTag = useMutation(api.drops.removeTag);
   const retryAnalysis = useMutation(api.drops.retryAnalysis);
@@ -75,15 +89,26 @@ export default function DropDetail() {
   const addToCollection = useMutation(api.collections.addDrop);
   const removeFromCollection = useMutation(api.collections.removeDrop);
   const createCollection = useMutation(api.collections.create);
+  const addToStack = useMutation(api.stacks.addDrop);
+  const removeFromStack = useMutation(api.stacks.removeDrop);
+  const createStack = useMutation(api.stacks.create);
+  const askDrop = useAction(api.search.askDrop);
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editSummary, setEditSummary] = useState("");
+  const [notesDraft, setNotesDraft] = useState<string | null>(null);
   const [newTag, setNewTag] = useState("");
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderText, setReminderText] = useState("");
   const [reminderAt, setReminderAt] = useState<number | null>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [newStackName, setNewStackName] = useState("");
+  const [askOpen, setAskOpen] = useState(false);
+  const [askQuery, setAskQuery] = useState("");
+  const [askAnswer, setAskAnswer] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [showOcr, setShowOcr] = useState(false);
 
   const drop = data?.drop ?? null;
 
@@ -122,6 +147,32 @@ export default function DropDetail() {
     toast("Saved");
   };
 
+  const handleTrash = async () => {
+    await softRemove({ id: drop._id });
+    toast("Moved to Trash", {
+      description: "You can restore it within 30 days.",
+      action: {
+        label: "Undo",
+        onClick: () => void restore({ id: drop._id }),
+      },
+    });
+    navigate("/app");
+  };
+
+  const handleAsk = async () => {
+    if (!askQuery.trim() || asking) return;
+    setAsking(true);
+    setAskAnswer(null);
+    try {
+      const res = await askDrop({ query: askQuery.trim(), dropId: drop._id as never });
+      setAskAnswer(res.answer ?? "I couldn't find an answer in this Drop alone — ask me a more specific question about it.");
+    } catch {
+      setAskAnswer("Sorry — I couldn't analyze this right now. Try again in a moment.");
+    } finally {
+      setAsking(false);
+    }
+  };
+
   const mapsUrl = drop.place
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([drop.place.name, drop.place.city, drop.place.country].filter(Boolean).join(", "))}`
     : null;
@@ -144,6 +195,18 @@ export default function DropDetail() {
               <img src={storageUrl} alt={drop.title} className="h-full w-full object-cover" />
             )}
             <DropStatusBadge status={drop.status} className="absolute bottom-3 left-3" />
+            <div className="absolute right-3 top-3 flex gap-1.5">
+              {drop.pinned && (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-background/85 text-primary backdrop-blur" title="Pinned">
+                  <Pin className="h-3.5 w-3.5" />
+                </span>
+              )}
+              {drop.sensitive && (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-background/85 text-rose-500 backdrop-blur" title="Sensitive — hidden from previews">
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                </span>
+              )}
+            </div>
             {drop.confidence !== undefined && (
               <span className="absolute bottom-3 right-3 rounded-full bg-background/85 px-2.5 py-1 text-[11px] font-semibold backdrop-blur">
                 {Math.round(drop.confidence * 100)}% confident
@@ -212,12 +275,7 @@ export default function DropDetail() {
               </a>
             )}
             {drop.product && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 rounded-xl"
-                onClick={() => toast("Price tracking coming soon — we'll watch it for you.")}
-              >
+              <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => toast("We'll track this price — check Wishlist soon.")}>
                 <TrendingDown className="h-4 w-4" /> Track price
               </Button>
             )}
@@ -245,6 +303,14 @@ export default function DropDetail() {
               <Star className={cn("h-4 w-4", drop.starred && "fill-amber-400 text-amber-400")} />
               {drop.starred ? "Favorited" : "Favorite"}
             </Button>
+            <Button variant="outline" size="sm" className={cn("gap-1.5 rounded-xl", drop.pinned && "border-primary/40 text-primary")} onClick={() => void togglePin({ id: drop._id })}>
+              {drop.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+              {drop.pinned ? "Unpin" : "Pin"}
+            </Button>
+            <Button variant="outline" size="sm" className={cn("gap-1.5 rounded-xl", drop.sensitive && "border-rose-500/40 text-rose-500")} onClick={() => void toggleSensitive({ id: drop._id })}>
+              <ShieldAlert className="h-4 w-4" />
+              {drop.sensitive ? "Not sensitive" : "Sensitive"}
+            </Button>
             <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => void toggleArchive({ id: drop._id })}>
               {drop.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
               {drop.archived ? "Unarchive" : "Archive"}
@@ -256,13 +322,8 @@ export default function DropDetail() {
               variant="ghost"
               size="sm"
               className="gap-1.5 rounded-xl text-destructive hover:text-destructive"
-              onClick={async () => {
-                if (window.confirm("Delete this Drop forever? Your file will be removed.")) {
-                  await removeDrop({ id: drop._id });
-                  toast("Drop deleted");
-                  navigate("/app");
-                }
-              }}
+              onClick={handleTrash}
+              title="Move to Trash"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -284,7 +345,7 @@ export default function DropDetail() {
       {/* Suggested reminder */}
       {drop.suggestedReminder && drop.status === "ready" && (
         <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-accent/50 p-4">
-          <SparkleIcon />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-lg">💡</span>
           <div className="flex-1">
             <p className="text-sm font-semibold">{drop.suggestedReminder.text}</p>
             <p className="text-xs text-muted-foreground">DROP suggested this — set it or ignore it.</p>
@@ -302,6 +363,82 @@ export default function DropDetail() {
           </Button>
         </div>
       )}
+
+      {/* Ask about this Drop */}
+      <section className="rounded-2xl border border-border/80 bg-card p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+            <MessageSquareText className="h-3.5 w-3.5" /> Ask about this Drop
+          </h2>
+          <Button variant="ghost" size="sm" className="text-primary" onClick={() => setAskOpen((o) => !o)}>
+            {askOpen ? "Close" : "Ask"}
+          </Button>
+        </div>
+        {askOpen && (
+          <div className="mt-3 space-y-2.5">
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleAsk();
+              }}
+            >
+              <Input
+                value={askQuery}
+                onChange={(e) => setAskQuery(e.target.value)}
+                placeholder={drop.flight ? "What time do I depart?" : drop.receipt ? "When is the return deadline?" : drop.product ? "What price did I save?" : "Ask about this Drop…"}
+                className="flex-1"
+              />
+              <Button type="submit" disabled={!askQuery.trim() || asking}>
+                {asking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              </Button>
+            </form>
+            {askAnswer && (
+              <p className="rounded-xl bg-muted/50 p-3 text-sm leading-relaxed">{askAnswer}</p>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Notes */}
+      <section className="rounded-2xl border border-border/80 bg-card p-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+          <Pencil className="h-3.5 w-3.5" /> Notes
+        </h2>
+        {notesDraft === null ? (
+          <p
+            className="mt-2 cursor-text whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
+            onClick={() => setNotesDraft(drop.notes ?? "")}
+          >
+            {drop.notes || "Add a private note — “Alex recommended this.” Notes are searchable."}
+          </p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            <Textarea
+              autoFocus
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+              rows={3}
+              placeholder="Private note…"
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await setNotes({ id: drop._id, notes: notesDraft });
+                  setNotesDraft(null);
+                  toast("Note saved");
+                }}
+              >
+                <Check className="mr-1.5 h-3.5 w-3.5" /> Save note
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setNotesDraft(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Structured info */}
       {(drop.product || drop.place || drop.event || drop.receipt || drop.reservation || drop.flight) && (
@@ -361,6 +498,37 @@ export default function DropDetail() {
               </InfoCard>
             )}
           </div>
+        </section>
+      )}
+
+      {/* Extracted text (OCR) */}
+      {drop.ocrText && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+              <Eye className="h-3.5 w-3.5" /> Extracted text
+            </h2>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowOcr((s) => !s)}>
+                {showOcr ? "Hide" : "View"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(drop.ocrText ?? "");
+                  toast("Text copied");
+                }}
+              >
+                <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
+              </Button>
+            </div>
+          </div>
+          {showOcr && (
+            <pre className="nice-scroll max-h-64 overflow-auto whitespace-pre-wrap rounded-2xl border border-border/80 bg-card p-4 text-xs leading-relaxed text-muted-foreground">
+              {drop.ocrText}
+            </pre>
+          )}
         </section>
       )}
 
@@ -513,19 +681,97 @@ export default function DropDetail() {
         </div>
       </section>
 
-      {/* Retry analysis */}
-      {(drop.status === "failed" || drop.status === "needs_review") && (
-        <Button
-          variant="outline"
-          className="gap-2"
-          onClick={() => {
-            void retryAnalysis({ id: drop._id });
-            toast("Re-analyzing your Drop…");
-          }}
-        >
-          <RefreshCw className="h-4 w-4" /> Help DROP understand this
-        </Button>
-      )}
+      {/* Stacks */}
+      <section>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+          <FolderPlus className="h-3.5 w-3.5" /> Stacks
+          <span className="font-normal normal-case text-muted-foreground/70">(active research groups)</span>
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {(dropStacks ?? []).map((s) => (
+            <button
+              key={s._id}
+              type="button"
+              onClick={() => void removeFromStack({ stackId: s._id, dropId: drop._id })}
+              className="cursor-pointer rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+            >
+              {s.emoji ?? "🗂️"} {s.name} ✕
+            </button>
+          ))}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 rounded-full">
+                <FolderPlus className="h-3.5 w-3.5" /> Add to stack
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 rounded-2xl p-2" align="start">
+              <div className="space-y-1">
+                {(stacks ?? []).map((s) => (
+                  <button
+                    key={s.stack._id}
+                    type="button"
+                    onClick={() => void addToStack({ stackId: s.stack._id, dropId: drop._id })}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                  >
+                    <span>{s.stack.emoji ?? "🗂️"}</span>
+                    <span className="flex-1 truncate font-medium">{s.stack.name}</span>
+                    <span className="text-xs text-muted-foreground">{s.count}</span>
+                    {dropStacks?.some((ds) => ds._id === s.stack._id) && <Check className="h-4 w-4 text-primary" />}
+                  </button>
+                ))}
+                <form
+                  className="flex gap-1.5 border-t border-border pt-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newStackName.trim()) return;
+                    const id = await createStack({ name: newStackName.trim() });
+                    await addToStack({ stackId: id as never, dropId: drop._id });
+                    setNewStackName("");
+                    toast("Stack created");
+                  }}
+                >
+                  <Input
+                    value={newStackName}
+                    onChange={(e) => setNewStackName(e.target.value)}
+                    placeholder="New stack… e.g. Japan 2027"
+                    className="h-8 text-xs"
+                  />
+                  <Button size="sm" className="h-8">Add</Button>
+                </form>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </section>
+
+      {/* Re-analyze */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(drop.status === "failed" || drop.status === "needs_review") && (
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              void retryAnalysis({ id: drop._id });
+              toast("Re-analyzing your Drop…");
+            }}
+          >
+            <RefreshCw className="h-4 w-4" /> Help DROP understand this
+          </Button>
+        )}
+        {drop.status === "ready" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 text-muted-foreground"
+            onClick={() => {
+              void retryAnalysis({ id: drop._id });
+              toast("Re-analyzing with AI… your edits are kept.");
+            }}
+          >
+            <RefreshCw className="h-4 w-4" /> Re-analyze with AI
+          </Button>
+        )}
+      </div>
 
       {/* Related */}
       {related.length > 0 && (
@@ -557,10 +803,6 @@ export default function DropDetail() {
       />
     </div>
   );
-}
-
-function SparkleIcon() {
-  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-lg">💡</span>;
 }
 
 function InfoCard({ title, emoji, children }: { title: string; emoji: string; children: React.ReactNode }) {

@@ -15,7 +15,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { ANALYSIS_VERSION } from "./lib/constants";
 import { buildSearchText } from "./lib/drops_helpers";
-import { getProvider } from "./ai";
+import { resolveProvider } from "./ai";
 import type { AnalyzeInput } from "./ai/types";
 
 export const analyzeDrop = internalAction({
@@ -50,7 +50,7 @@ export const analyzeDrop = internalAction({
         if (url) input.fileUrl = url;
       }
 
-      const provider = getProvider();
+      const provider = await resolveProvider();
       const analysis = await provider.analyze(input);
 
       const searchText = buildSearchText({

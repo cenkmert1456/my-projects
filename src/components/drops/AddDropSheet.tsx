@@ -15,6 +15,7 @@ import {
   Camera,
   FileUp,
   ImagePlus,
+  Layers,
   Link2,
   Loader2,
   Sparkles,
@@ -59,11 +60,14 @@ export function AddDropSheet({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<{ dropId: string; title: string } | null>(null);
+  const [clipImage, setClipImage] = useState<string | null>(null);
+  const [groupTogether, setGroupTogether] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const generateUploadUrl = useMutation(api.drops.generateUploadUrl);
   const create = useMutation(api.drops.create);
+  const createStack = useMutation(api.stacks.create);
   const { isAuthenticated } = useAuth();
   const plan = useQuery(api.profile.planInfo);
 
@@ -75,8 +79,40 @@ export function AddDropSheet({
       setNote("");
       setError(null);
       setDuplicate(null);
+      setClipImage(null);
     }
   }, [open, initialKind]);
+
+  // Clipboard detection on open (browser permissions permitting).
+  useEffect(() => {
+    if (!open) return;
+    const detect = async () => {
+      try {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imgType = item.types.find((t) => t.startsWith("image/"));
+          if (imgType) {
+            const blob = await item.getType(imgType);
+            if (blob) setClipImage(URL.createObjectURL(blob));
+            break;
+          }
+        }
+      } catch {
+        // read not permitted — paste handling below still works
+      }
+      try {
+        const t = await navigator.clipboard.readText();
+        if (/^https?:\/\/\S+$/i.test(t.trim())) {
+          setKind("link");
+          setUrl(t.trim());
+          setMode("link");
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void detect();
+  }, [open]);
 
   const close = () => onOpenChange(false);
 
@@ -92,7 +128,7 @@ export function AddDropSheet({
           const file = item.getAsFile();
           if (file) {
             e.preventDefault();
-            handleFile(file, file.type.startsWith("image") ? "screenshot" : "document");
+            void handleFiles([file], file.type.startsWith("image/") ? "screenshot" : "document");
             return;
           }
         }
@@ -107,32 +143,70 @@ export function AddDropSheet({
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const handleFile = async (file: File, fileKind: DropKindOption) => {
+  const uploadOne = async (file: File, fileKind: DropKindOption) => {
+    if (!isAuthenticated) return null;
+    const storageUrl = await generateUploadUrl();
+    const res = await fetch(storageUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!res.ok) throw new Error("Upload failed — please try again.");
+    const storageId = storageUrl.split("/").pop() ?? "";
+    return create({
+      kind: fileKind,
+      storageId,
+      contentType: file.type,
+      fileName: file.name,
+    });
+  };
+
+  const handleFiles = async (files: File[], fallbackKind: DropKindOption) => {
+    if (!files.length) return;
     if (!isAuthenticated) return;
     setError(null);
     setDuplicate(null);
     setUploading(true);
     setMode("uploading");
+    const ids: string[] = [];
     try {
-      const storageUrl = await generateUploadUrl();
-      const res = await fetch(storageUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
+      for (const file of files) {
+        const isDoc = /pdf|word|text/i.test(file.type);
+        const kindForFile: DropKindOption = isDoc ? "document" : fallbackKind;
+        const result = await uploadOne(file, kindForFile);
+        if (!result) continue;
+        if (result.duplicate && result.dropId) {
+          setDuplicate({ dropId: result.dropId, title: result.title ?? "" });
+          setMode("choose");
+          setUploading(false);
+          toast("You already saved this", {
+            description: "DROP remembers duplicates so your memory stays clean.",
+          });
+          return;
+        }
+        ids.push(String(result.dropId));
+      }
+
+      // Optional: group a multi-item capture into a Stack.
+      if (groupTogether && ids.length > 1) {
+        try {
+          await createStack({ name: "New stack", dropIds: ids as never });
+        } catch {
+          // grouping is optional
+        }
+      }
+
+      setUploading(false);
+      toast(files.length > 1 ? `Dropped ${files.length} items ✓` : "Dropped ✓", {
+        description: "Saved instantly. DROP is understanding them now…",
       });
-      if (!res.ok) throw new Error("Upload failed — please try again.");
-      const storageId = storageUrl.split("/").pop() ?? "";
-      const result = await create({
-        kind: fileKind,
-        storageId,
-        contentType: file.type,
-        fileName: file.name,
-      });
-      handleResult(result);
+      close();
+      if (ids.length) navigate(`/app/drop/${ids[0]}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Your file was not lost — try again.");
+      setError(err instanceof Error ? err.message : "Something went wrong. Your files were not lost — try again.");
       setMode("choose");
       setUploading(false);
     }
@@ -193,11 +267,9 @@ export function AddDropSheet({
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      const files = e.dataTransfer.files;
+      const files = Array.from(e.dataTransfer.files);
       if (files.length) {
-        const file = files[0];
-        const isDoc = /pdf|word|text|document/i.test(file.type);
-        handleFile(file, isDoc ? "document" : "image");
+        void handleFiles(files, "image");
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -271,6 +343,31 @@ export function AddDropSheet({
               </div>
             )}
 
+            {clipImage && (
+              <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/30 bg-accent/50 p-3">
+                <img src={clipImage} alt="Clipboard" className="h-14 w-14 rounded-xl object-cover" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">Drop clipboard image?</p>
+                  <p className="text-xs text-muted-foreground">We detected an image in your clipboard.</p>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={uploading}
+                  onClick={async () => {
+                    try {
+                      const blob = await (await fetch(clipImage)).blob();
+                      const file = new File([blob], "clipboard.png", { type: "image/png" });
+                      await handleFiles([file], "screenshot");
+                    } catch {
+                      toast("Couldn't read the clipboard image");
+                    }
+                  }}
+                >
+                  <ImagePlus className="mr-1.5 h-4 w-4" /> Drop it
+                </Button>
+              </div>
+            )}
+
             {/* Drop zone */}
             <div
               onDragOver={(e) => {
@@ -298,16 +395,17 @@ export function AddDropSheet({
                 {dragging ? "Release to drop it" : "Drag & drop anything"}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                or paste from clipboard — DROP detects images & links
+                Multiple files welcome — or paste from clipboard, DROP detects images & links
               </p>
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept="image/*,.pdf,.doc,.docx,.txt"
                 className="hidden"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFile(file, /pdf|word|text/i.test(file.type) ? "document" : "image");
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length) void handleFiles(files, "image");
                   e.target.value = "";
                 }}
               />
@@ -341,6 +439,22 @@ export function AddDropSheet({
               ))}
             </div>
 
+            <label className="mt-4 flex cursor-pointer items-center gap-2.5 rounded-2xl border border-border/80 bg-muted/30 px-4 py-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={groupTogether}
+                onChange={(e) => setGroupTogether(e.target.checked)}
+                className="h-4 w-4 accent-[var(--primary)]"
+              />
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              <span className="text-left">
+                <span className="block font-semibold leading-tight">Group multi-item drops</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Batch captures go into a Stack together
+                </span>
+              </span>
+            </label>
+
             {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
           </div>
         )}
@@ -355,7 +469,7 @@ export function AddDropSheet({
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://…"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateLink();
+                  if (e.key === "Enter") void handleCreateLink();
                 }}
               />
               <p className="mt-1.5 text-xs text-muted-foreground">
@@ -366,7 +480,7 @@ export function AddDropSheet({
               <Button variant="outline" className="flex-1" onClick={() => setMode("choose")}>
                 Back
               </Button>
-              <Button className="flex-[2]" onClick={handleCreateLink} disabled={!url.trim()}>
+              <Button className="flex-[2]" onClick={() => void handleCreateLink()} disabled={!url.trim()}>
                 <Link2 className="mr-2 h-4 w-4" />
                 Save link
               </Button>
@@ -392,7 +506,7 @@ export function AddDropSheet({
               <Button variant="outline" className="flex-1" onClick={() => setMode("choose")}>
                 Back
               </Button>
-              <Button className="flex-[2]" onClick={handleCreateNote} disabled={!note.trim()}>
+              <Button className="flex-[2]" onClick={() => void handleCreateNote()} disabled={!note.trim()}>
                 <StickyNote className="mr-2 h-4 w-4" />
                 Save note
               </Button>

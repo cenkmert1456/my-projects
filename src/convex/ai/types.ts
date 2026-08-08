@@ -136,10 +136,24 @@ export interface SourceItem {
   facts?: string;
 }
 
+export interface AIHealth {
+  ok: boolean;
+  provider: string;
+  label: string;
+  local: boolean;
+  models?: { text?: string; vision?: string; embedding?: string };
+  latencyMs?: number;
+  error?: string;
+}
+
 export interface AIProvider {
   id: string;
   analyze(input: AnalyzeInput): Promise<DropAnalysis>;
   embed(text: string): Promise<number[]>;
+  /** Optional quick reachability probe (Ollama pings /api/tags). */
+  ping?(): Promise<boolean>;
+  /** Optional detailed health report for the AI & Privacy settings page. */
+  health?(): Promise<AIHealth>;
   /**
    * Answer a natural-language question strictly from the user's own Drops
    * (`sources`). Returns null when the provider can't synthesize (e.g. demo
