@@ -29,6 +29,7 @@
         "@capacitor/status-bar": "8.0.3",
         "@capawesome/capacitor-file-picker": "8.0.4",
         "@convex-dev/auth": "^0.0.90",
+        "@drop/ai": "file:packages/drop-ai",
         "@hookform/resolvers": "^5.2.2",
         "@jridgewell/trace-mapping": "^0.3.31",
         "@oslojs/crypto": "^1.0.1",
@@ -68,6 +69,7 @@
         "convex": "^1.43.0",
         "date-fns": "^4.1.0",
         "embla-carousel-react": "^8.6.0",
+        "@drop/ai": "file:packages/drop-ai",
         "framer-motion": "^12.23.25",
         "hono": "^4.10.7",
         "input-otp": "^1.4.2",
@@ -214,6 +216,10 @@
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 
     "@date-fns/tz": ["@date-fns/tz@1.5.0", "", {}, "sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg=="],
+
+    "@drop/ai": ["@drop/ai@file:packages/drop-ai", { "devDependencies": { "@capacitor/core": "^8.5.0", "typescript": "~5.9.3" }, "peerDependencies": { "@capacitor/core": "^8.0.0" } }],
+
+    "@drop/ai": ["@drop/ai@file:packages/drop-ai", { "devDependencies": { "@capacitor/core": "^8.5.0", "typescript": "~5.9.3" }, "peerDependencies": { "@capacitor/core": "^8.0.0" } }],
 
     "@emnapi/runtime": ["@emnapi/runtime@1.11.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA=="],
 

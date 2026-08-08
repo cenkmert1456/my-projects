@@ -23,11 +23,14 @@ The core loop is `SAVE → UNDERSTAND → SEARCH`:
 
 ## Highlights
 
-- **Free / self-hosted AI**: the whole pipeline runs on your own **Ollama**
-  server with open-weight models (vision, text, embeddings) — zero API costs.
-  Optional cloud Gemini as a fallback. DROP health-checks the provider at
-  startup and degrades gracefully to its built-in deterministic analyzer, so
-  the product never breaks.
+- **DROP Intelligence — zero-config AI**: no keys, no servers, no model
+  setup. The built-in engine understands every Drop out of the box. On the
+  mobile apps a native **DropAI engine** runs on-device (OCR + embeddings +
+  tiered local models, with Apple Foundation Models / Gemini Nano used
+  automatically when available), and the web backend runs the same pipeline
+  with an optional cloud Gemini boost. Everything degrades gracefully to the
+  deterministic analyzer, so the product never breaks and never asks for
+  configuration.
 - **Hybrid search** (`src/convex/search.ts`): keyword scoring + semantic
   vectors + metadata filters + favorites nudge, with natural time phrases
   ("last week", "around March") parsed into date windows.
@@ -39,8 +42,9 @@ The core loop is `SAVE → UNDERSTAND → SEARCH`:
   uploads auto-group into a stack.
 - **Action Center**: aggregated return deadlines, upcoming plans, failed
   analyses, pending reminders, pinned Drops.
-- **Settings → AI & Privacy**: live health check of your AI provider, model
-  names, latency, and a clear **Local AI** badge when running on Ollama.
+- **Settings → DROP Intelligence**: Status **Ready**, **Processing: On
+  device** (mobile), Wi-Fi-only download toggle, AI storage, remove/re-download
+  — with model/runtime details tucked under Advanced diagnostics.
 - Pinned / sensitive Drops, notes, bulk actions, duplicate detection + merge,
   data export, private-by-default everywhere.
 
@@ -53,7 +57,7 @@ The core loop is `SAVE → UNDERSTAND → SEARCH`:
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui, Framer Motion |
 | Backend  | **Convex** (managed serverless backend + database + file storage) |
 | Auth     | Convex Auth — email OTP + anonymous (guest)                       |
-| AI       | **Ollama (local, free)** → Gemini (cloud) → deterministic fallback, behind one abstraction |
+| AI       | **DROP Intelligence** — deterministic built-in engine (default, zero-config) → optional Gemini (cloud, only when a key exists); on-device native engine in the mobile apps |
 | Search   | Hybrid: keyword scoring + semantic vectors (cosine) + metadata filters |
 
 ## Local setup
@@ -70,82 +74,49 @@ Convex runs against the deployment configured via `VITE_CONVEX_URL`
 
 ---
 
-## Free AI — Ollama (recommended)
+## DROP Intelligence — automatic, zero-configuration AI
 
-DROP can run entirely on a local, self-hosted AI server. Nothing is
-hardcoded to one model; DROP inspects the server's installed models at
-runtime and picks the best configured match.
+Users never configure AI. **Install DROP → Open DROP → AI works.**
+No Ollama, no localhost, no API keys, no model pickers — nothing to install
+or download manually for the web product.
 
-### 1. Install & start Ollama
+### How it works
 
-```bash
-# https://ollama.com — then:
-ollama serve
-```
+- **Web**: DROP's built-in deterministic engine (`src/convex/ai/demo.ts`)
+  understands every Drop out of the box — smart titles, categories, entities,
+  prices, dates, actions, and consistent semantic embeddings for search. If a
+  `GOOGLE_API_KEY` exists, Gemini is used automatically as an optional boost;
+  if it doesn't, DROP simply runs on its built-in engine. Nothing ever stops
+  working when a key is missing or a quota expires.
+- **Mobile (Android/iOS)**: a native **DropAI engine** (`packages/drop-ai/`)
+  runs directly inside the app — on-device OCR (ML Kit / Apple Vision),
+  deterministic metadata extraction, local embeddings, and tiered on-device
+  models. On first launch DROP detects the device, picks the best engine
+  (Apple Foundation Models / Gemini Nano when available, otherwise DROP's own
+  bundled model), and shows a one-time friendly setup screen
+  ("Preparing your private AI…"). System AI is never required.
+- **Settings → DROP Intelligence** shows only: **Status: Ready**,
+  **Processing: On device**, an optional Wi-Fi-only download toggle, AI
+  storage size, and Remove/Re-download. Model names and tiers live under
+  **Advanced** for diagnostics only.
 
-### 2. Pull the recommended models
+### Optional cloud AI — Google Gemini (web backend only)
 
-```bash
-# Text (analysis, Ask DROP synthesis)
-ollama pull qwen2.5:7b
-
-# Vision (screenshot / image understanding, OCR)
-ollama pull qwen2.5vl:7b
-
-# Embeddings (semantic search)
-ollama pull nomic-embed-text
-```
-
-Other supported open models (auto-detected if configured models are absent):
-`llama3.2`, `gemma3`, `mistral`, `llama3.1` (text);
-`llama3.2-vision`, `minicpm-v` (vision);
-`bge-m3`, `all-minilm`, `mxbai-embed-large` (embeddings).
-
-### 3. Configure environment variables
-
-Set these in the platform's **Keys/API keys** UI (Convex env vars):
+Set only if you want a cloud intelligence boost on the web backend:
 
 | Variable               | Default               | Purpose                                  |
 | ---------------------- | --------------------- | ---------------------------------------- |
-| `OLLAMA_BASE_URL`      | `http://localhost:11434` | Base URL of your Ollama server        |
-| `OLLAMA_VISION_MODEL`  | auto-detect           | Vision model (screenshots, OCR)          |
-| `OLLAMA_TEXT_MODEL`    | auto-detect           | Text model (analysis, Ask DROP)          |
-| `OLLAMA_EMBEDDING_MODEL` | auto-detect         | Embedding model (semantic search)        |
-
-> **Local server reachability:** the app's backend (Convex cloud) must be able
-> to reach your Ollama server. For local dev that means running Ollama on the
-> same machine as the dev tooling, or exposing it (e.g. `OLLAMA_HOST=0.0.0.0`
-> + a tunnel) if the backend runs elsewhere. If Ollama is unreachable, DROP
-> falls back cleanly — see **AI failure fallback** below.
-
-### 4. Verify
-
-Open **Settings → AI & Privacy** and hit **Re-check**. You should see:
-
-- ✅ **Ollama · local AI** with model names and latency, plus the **Local AI**
-  badge: *"your AI processing is configured through your own server."*
-
----
-
-## Optional cloud AI — Google Gemini
-
-If `OLLAMA_BASE_URL` is unset (or Ollama is unreachable), DROP uses Gemini
-when a key is present:
-
-| Variable               | Default               | Purpose                                  |
-| ---------------------- | --------------------- | ---------------------------------------- |
-| `GOOGLE_API_KEY`       | —                     | Cloud AI analysis + embeddings           |
+| `GOOGLE_API_KEY`       | —                     | Optional cloud AI analysis + embeddings  |
 | `GEMINI_TEXT_MODEL`    | `gemini-1.5-flash`    | Text model                               |
 | `GEMINI_VISION_MODEL`  | `gemini-1.5-flash`    | Vision model                             |
 
-Get a key at <https://aistudio.google.com/apikey>.
+Get a key at <https://aistudio.google.com/apikey>. **Without it, DROP works
+fully on the built-in engine** — the key only upgrades analysis quality.
 
-### Demo mode (no AI configured)
-
-With neither Ollama nor a Gemini key, DROP uses a deterministic heuristic
-analyzer (`src/convex/ai/demo.ts`) so the full product loop works offline,
-free and instantly. The Settings page shows a clean explanation instead of
-crashing.
+> **Developers only:** a self-hosted Ollama provider exists in
+> `src/convex/ai/ollama.ts` purely as a dev/diagnostic option. It is never
+> part of the default chain and activates only when `OLLAMA_BASE_URL` is
+> explicitly set. End users never see or need it.
 
 ### AI failure fallback
 
@@ -177,14 +148,19 @@ src/convex/
   analyze.ts         Async AI pipeline action (scheduled on create)
   search.ts          Hybrid search action + Ask DROP (sources, follow-ups,
                      natural time-language) 
-  aiHealth.ts        AI provider health check (Settings → AI & Privacy)
+  aiHealth.ts        AI provider health check (Settings → DROP Intelligence)
   stacks.ts          Stack (research-group) CRUD + membership
   collections.ts     Collections + membership
   reminders.ts       Reminders (text + timestamp, complete/dismiss)
   profile.ts         Settings, stats, data export, account deletion, demo data
   searchHistory.ts   Search history (opt-out)
   seed.ts            Plan catalog seeding (limits live in the DB)
-  ai/                Provider abstraction (Ollama + Gemini + demo) + parsing
+  ai/                Provider abstraction (built-in demo engine + optional
+                     Gemini; dev-only Ollama) + parsing
+
+packages/drop-ai/     Native DropAI engine (Capacitor plugin): Kotlin + Swift
+                     OCR, embeddings, tiered on-device models, model manager
+                     (verified, resumable downloads), tier detection
   lib/               Constants (categories, plans, demo data), search-text builder
 
 src/
@@ -204,8 +180,9 @@ src/
 ### The AI pipeline
 
 1. `drops.create` inserts the Drop instantly and schedules `analyze.analyzeDrop`.
-2. The action resolves the provider (Ollama → Gemini → demo), fetches the
-   original file (signed URL) if present, and gets structured JSON: title,
+2. The action resolves the provider (built-in engine by default, optional
+   Gemini when a key exists — never Ollama), fetches the original file
+   (signed URL) if present, and gets structured JSON: title,
    summary, category, subcategory, keywords, entities, product/place/event/
    receipt/reservation/flight data, suggested action/reminder, confidence.
 3. The searchable text is embedded once and stored on the Drop with
@@ -265,9 +242,12 @@ the UI gates the free limit. To add billing, use the Vly payments gateway
   inside authenticated queries (`drops.getStorageUrl`).
 - Every query/mutation/action checks ownership on the server (`userId`) —
   including every search and Ask DROP context.
-- **Local AI**: with Ollama configured, screenshots and content never leave
-  your machine for AI processing. Database & files still live in DROP's
-  cloud; the Settings page explains this distinction honestly.
+- **On-device AI (mobile)**: screenshots are understood locally — OCR,
+  classification, embeddings and model inference run inside the app and never
+  go to a third-party AI provider. Database & files still synchronize to your
+  DROP account in the cloud (so they're available on every device); the
+  Settings page explains this distinction honestly. On the web, the built-in
+  backend engine processes content without external AI providers.
 - Account deletion removes Drops + files + collections + reminders + history.
 - Full data export (JSON) from Settings/Profile. Trash keeps deleted Drops
   recoverable for 30 days.
@@ -429,8 +409,8 @@ the app switcher on supported platforms.
 
 The platform manages the dev server and Convex push. For production:
 
-1. Configure AI: set `OLLAMA_BASE_URL` (+ models) or `GOOGLE_API_KEY` in
-   Convex env vars.
+1. No AI configuration required — DROP's built-in engine works out of the
+   box. Optionally set `GOOGLE_API_KEY` for a cloud boost on the web backend.
 2. `bun convex deploy` to push backend functions to production.
 3. `bun run build && bun run preview` (or host the static build) for the
    frontend.
@@ -441,8 +421,8 @@ The platform manages the dev server and Convex push. For production:
 
 | Symptom                                  | Fix                                                           |
 | ---------------------------------------- | ------------------------------------------------------------- |
-| Settings shows "Ollama not reachable"    | Is `ollama serve` running? Is `OLLAMA_BASE_URL` correct? Does the backend network reach it? |
-| "No Ollama model available"              | `ollama pull qwen2.5:7b` (or set `OLLAMA_TEXT_MODEL`).        |
-| Vision Drops stay `needs_review`         | Install a vision model: `ollama pull qwen2.5vl:7b`.           |
-| Semantic search not matching             | Pull an embedding model: `ollama pull nomic-embed-text`, then re-analyze Drops. |
-| Everything still works but analysis is basic | You're in demo mode — add Ollama or a Gemini key.          |
+| Vision Drops stay `needs_review`         | On mobile, make sure the on-device AI model finished downloading (Settings → DROP Intelligence → Re-check). On web this is normal only for very low-confidence content — use **Try analysis again** from the Drop. |
+| Semantic search not matching             | Re-analyze the Drop (Try analysis again) to regenerate its embedding. Embeddings use one consistent algorithm everywhere. |
+| Analysis looks basic                      | That's the built-in engine working without any configuration. Set `GOOGLE_API_KEY` on the web backend for a cloud boost; mobile uses the on-device engine automatically. |
+| Mobile shows "Preparing your private AI…" forever | The one-time model download needs a network connection. Check connectivity, or use **Wait for Wi-Fi** then **Download now** from Settings → DROP Intelligence. |
+| App saves Drops but analysis is delayed   | On mobile the engine releases resources when idle and re-loads on demand — Drops remain searchable with OCR + deterministic metadata instantly. |

@@ -1,0 +1,28 @@
+{
+  "name": "@drop/ai",
+  "version": "1.0.0",
+  "description": "DROP Intelligence — zero-configuration on-device AI engine (OCR, embeddings, tiered models) for Android & iOS",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/plugin.js",
+  "types": "dist/definitions.d.ts",
+  "files": ["dist", "android", "ios", "README.md", "Package.swift"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "capacitor": {
+    "android": {
+      "src": "android"
+    },
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.5.0",
+    "typescript": "~5.9.3"
+  }
+}

@@ -786,3 +786,166 @@ export const retryAnalysis = mutation({
     return true;
   },
 });
+
+// ---------------------------------------------------------------------------
+// DROP Intelligence — on-device results (native OCR / native embeddings)
+//
+// The mobile apps run the DropAI engine on-device (offline, private). These
+// mutations let the native layer feed the shared backend so results are
+// immediately searchable across web, Android and iOS — with server-side
+// ownership checks on every write.
+// ---------------------------------------------------------------------------
+
+/**
+ * Attach native OCR text to a Drop. The text is merged into the searchable
+ * content immediately (full-text + keyword search), so screenshots become
+ * searchable the moment OCR finishes — with or without any generative model.
+ */
+export const attachOcr = mutation({
+  args: { id: v.id("drops"), ocrText: v.string(), ocrMeta: v.optional(v.object({ language: v.optional(v.string()) })) },
+  handler: async (ctx, { id, ocrText, ocrMeta }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const drop = await ctx.db.get(id);
+    if (!drop || drop.userId !== userId) return null;
+
+    const clean = ocrText.slice(0, 50_000).trim();
+    if (!clean) return null;
+    const ocrLanguage = ocrMeta?.language ?? drop.ocrLanguage;
+
+    const searchText = buildSearchText({
+      title: drop.title,
+      summary: drop.summary,
+      keywords: drop.keywords,
+      tags: drop.tags,
+      text: drop.text,
+      notes: drop.notes,
+      ocrText: clean,
+      category: drop.category,
+      subcategory: drop.subcategory,
+      url: drop.url,
+      source: drop.source,
+      entities: drop.entities,
+    });
+
+    const next: Record<string, unknown> = {
+      ocrText: clean,
+      ocrLanguage,
+      ocrEngine: "native",
+      searchText,
+    };
+    // A Drop that was still waiting on analysis becomes searchable now;
+    // richer analysis may still upgrade it later.
+    if (drop.status === "processing" && !drop.summary) {
+      next.status = "ready";
+      next.analysisStatus = "ready";
+    }
+    await ctx.db.patch(id, next);
+    return { ocrText: clean };
+  },
+});
+
+/**
+ * Attach an on-device embedding (semantic search vector). DROP's native
+ * engine mirrors the built-in deterministic embed algorithm, so on-device
+ * vectors stored with provider "demo" match server-side cosine scoring
+ * exactly — semantic search works with zero configuration.
+ */
+export const attachEmbedding = mutation({
+  args: { id: v.id("drops"), embedding: v.array(v.number()), provider: v.string() },
+  handler: async (ctx, { id, embedding, provider }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const drop = await ctx.db.get(id);
+    if (!drop || drop.userId !== userId) return null;
+    if (embedding.length < 8 || embedding.length > 512) throw new Error("Invalid embedding size");
+    if (embedding.some((n) => !Number.isFinite(n))) throw new Error("Invalid embedding values");
+    const existing = drop.embedding;
+    if (existing && existing.length === embedding.length) {
+      // Idempotent — don't churn writes for identical vectors.
+      let same = true;
+      for (let i = 0; i < existing.length; i++) {
+        if (Math.abs(existing[i] - embedding[i]) > 1e-9) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return { stored: true };
+    }
+    await ctx.db.patch(id, { embedding, embeddingProvider: provider });
+    return { stored: true };
+  },
+});
+
+/**
+ * Attach a full structured analysis produced on-device (mobile DropAI
+ * engine, Tier A/B devices). Mirrors what analyze.ts stores so the pipeline
+ * and the native engine share one schema.
+ */
+export const attachAnalysis = mutation({
+  args: {
+    id: v.id("drops"),
+    title: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    category: v.optional(v.string()),
+    subcategory: v.optional(v.string()),
+    keywords: v.optional(v.array(v.string())),
+    entities: v.optional(
+      v.array(
+        v.object({
+          type: v.string(),
+          value: v.string(),
+          confidence: v.optional(v.number()),
+          metadata: v.optional(v.record(v.string(), v.string())),
+        }),
+      ),
+    ),
+    language: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    ocrText: v.optional(v.string()),
+    suggestedAction: v.optional(v.string()),
+    suggestedReminder: v.optional(v.object({ text: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const drop = await ctx.db.get(args.id);
+    if (!drop || drop.userId !== userId) return null;
+
+    const category = args.category && isCategory(args.category) ? args.category : drop.category;
+    const searchText = buildSearchText({
+      title: args.title ?? drop.title,
+      summary: args.summary ?? drop.summary,
+      keywords: args.keywords ?? drop.keywords,
+      tags: drop.tags,
+      text: drop.text,
+      notes: drop.notes,
+      ocrText: args.ocrText ?? drop.ocrText,
+      category,
+      subcategory: args.subcategory ?? drop.subcategory,
+      url: drop.url,
+      source: drop.source,
+      entities: args.entities ?? drop.entities,
+    });
+    const patch: Record<string, unknown> = {
+      title: args.title ?? drop.title,
+      summary: args.summary ?? drop.summary,
+      category,
+      subcategory: args.subcategory ?? drop.subcategory,
+      keywords: args.keywords ?? drop.keywords,
+      entities: args.entities ?? drop.entities,
+      language: args.language ?? drop.language,
+      ocrText: args.ocrText ?? drop.ocrText,
+      ocrEngine: args.ocrText ? "native" : drop.ocrEngine,
+      confidence: args.confidence ?? drop.confidence,
+      suggestedAction: args.suggestedAction ?? drop.suggestedAction,
+      suggestedReminder: args.suggestedReminder ?? drop.suggestedReminder,
+      status: "ready",
+      analysisStatus: "ready",
+      searchText,
+    };
+    await ctx.db.patch(args.id, patch);
+    await logActivity(ctx, userId, "analyzed on device", args.id);
+    return { ok: true };
+  },
+});

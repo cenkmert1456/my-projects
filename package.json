@@ -46,6 +46,8 @@
     "@capacitor/status-bar": "8.0.3",
     "@capawesome/capacitor-file-picker": "8.0.4",
     "@convex-dev/auth": "^0.0.90",
+    "@drop/ai": "file:packages/drop-ai",
+    "@drop/ai": "file:packages/drop-ai",
     "@hookform/resolvers": "^5.2.2",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@oslojs/crypto": "^1.0.1",

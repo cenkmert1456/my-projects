@@ -51,7 +51,19 @@ export const analyzeDrop = internalAction({
       }
 
       const provider = await resolveProvider();
-      const analysis = await provider.analyze(input);
+
+      // DROP Intelligence fallback: if the optional cloud provider fails for
+      // any reason, silently run the built-in deterministic engine instead of
+      // failing the Drop. The Drop is never lost, never blocks on the cloud.
+      let analysis;
+      try {
+        analysis = await provider.analyze(input);
+      } catch (e) {
+        if (provider.id === "demo") throw e;
+        console.warn("Cloud analysis failed — using built-in engine:", e);
+        const { DemoProvider } = await import("./ai/demo");
+        analysis = await new DemoProvider().analyze(input);
+      }
 
       const searchText = buildSearchText({
         title: analysis.title,

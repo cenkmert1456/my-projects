@@ -52,7 +52,7 @@ export default function Landing() {
             <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
             <a href="#privacy" className="transition-colors hover:text-foreground">Privacy</a>
-            <a href="#local-ai" className="transition-colors hover:text-foreground">Local AI</a>
+            <a href="#intelligence" className="transition-colors hover:text-foreground">Intelligence</a>
             <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
             <a href="#faq" className="transition-colors hover:text-foreground">FAQ</a>
           </nav>
@@ -269,16 +269,16 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Use your own AI */}
-      <section id="local-ai" className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
+      {/* DROP Intelligence */}
+      <section id="intelligence" className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
         <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-bold uppercase tracking-widest text-primary">Local AI</p>
+          <p className="text-sm font-bold uppercase tracking-widest text-primary">DROP Intelligence</p>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Use your own AI.
+            It already knows how to think.
           </h2>
           <p className="mt-4 text-muted-foreground">
-            DROP can run its entire understanding engine on a local, self-hosted
-            model — free, private, and fully open.
+            DROP's AI lives on your device and sets itself up automatically. You
+            never configure it — you just start Dropping.
           </p>
         </motion.div>
         <div className="mt-12 grid items-center gap-6 lg:grid-cols-2">
@@ -287,20 +287,20 @@ export default function Landing() {
             className="rounded-3xl border border-primary/25 bg-card p-8 shadow-xl shadow-primary/5"
           >
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary">
-              <Cpu className="h-6 w-6" />
+              <Sparkles className="h-6 w-6" />
             </span>
-            <h3 className="mt-4 text-xl font-extrabold tracking-tight">Ollama, out of the box</h3>
+            <h3 className="mt-4 text-xl font-extrabold tracking-tight">Zero configuration. By design.</h3>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Point DROP at your own Ollama server and screenshots, receipts and
-              documents are analyzed by open-weight vision models running on your
-              hardware. Your images never leave your machine for AI processing.
+              Install DROP → open it → it understands. There are no servers to
+              install, no API keys to paste, no models to choose and no
+              localhost to type.
             </p>
             <ul className="mt-5 space-y-2.5">
               {[
-                "Vision, text & embeddings — fully local",
-                "Zero API costs, works offline",
-                "Free forever, no subscription needed",
-                "Falls back gracefully if the server is off",
+                "Runs on-device — private, fast, works offline",
+                "Automatically picks the best engine for your phone",
+                "No accounts with AI providers, no usage limits",
+                "Never uploads screenshots to third-party AI",
               ].map((f) => (
                 <li key={f} className="flex items-center gap-2 text-sm">
                   <span className="text-primary">✓</span> {f}
@@ -308,35 +308,36 @@ export default function Landing() {
               ))}
             </ul>
           </motion.div>
-          <motion.div {...fadeUp} transition={{ duration: 0.45, delay: 0.08 }} className="space-y-4">
-            <div className="rounded-2xl border border-border/70 bg-card p-5">
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                <p className="text-sm font-bold tracking-tight">Settings → AI & Privacy</p>
-              </div>
-              <div className="mt-3 rounded-xl border border-border/60 bg-muted/40 p-3.5">
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-300">✓ Ollama · local AI</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Your AI processing runs on your own server. Your content never
-                  leaves your machine.
-                </p>
-                <div className="mt-2.5 grid grid-cols-3 gap-1.5">
-                  {[
-                    ["Text", "qwen2.5"],
-                    ["Vision", "qwen2.5vl"],
-                    ["Embed", "nomic-embed"],
-                  ].map(([k, v]) => (
-                    <div key={k} className="rounded-lg border border-border/60 bg-card px-2 py-1.5">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{k}</p>
-                      <p className="truncate font-mono text-[10px] font-semibold">{v}</p>
-                    </div>
-                  ))}
+          <motion.div {...fadeUp} transition={{ duration: 0.45, delay: 0.08 }} className="space-y-3">
+            {[
+              {
+                icon: Sparkles,
+                title: "Apple Intelligence-ready iPhones & supported Androids",
+                desc: "Uses the system's on-device AI — the best of everything, instantly.",
+              },
+              {
+                icon: Cpu,
+                title: "Every other phone",
+                desc: "DROP's own private on-device engine, downloaded once and cached securely. One-time setup, no technical choices.",
+              },
+              {
+                icon: Search,
+                title: "Small or older phones",
+                desc: "A fast, light mode still reads your screenshots, understands them and finds them — just leaner.",
+              },
+            ].map((card) => (
+              <div key={card.title} className="flex items-start gap-4 rounded-2xl border border-border/70 bg-card p-5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                  <card.icon className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-sm font-bold tracking-tight">{card.title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{card.desc}</p>
                 </div>
               </div>
-            </div>
-            <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-              Technical users configure it in advanced settings — ordinary consumers
-              never need to think about it.
+            ))}
+            <p className="px-1 pt-1 text-xs leading-relaxed text-muted-foreground">
+              You'll never see the engine. You'll only see it work.
             </p>
           </motion.div>
         </div>
@@ -447,7 +448,8 @@ export default function Landing() {
               { q: "Do I need to organize anything?", a: "No. DROP does the organizing. Collections exist, but they're optional — you can search everything in plain words instead." },
               { q: "Is my stuff private?", a: "Yes. Drops are private by default, files use signed URLs, and your content is never used to train models. You can export or delete everything anytime." },
               { q: "What happens if the AI can't figure something out?", a: "Your Drop is still saved instantly. It just waits in your Inbox marked “needs review” until you help it — or retry it later. Nothing is ever lost." },
-              { q: "Can I use my own local AI?", a: "Yes — DROP is designed for it. Point it at your own Ollama server with open-weight vision, text and embedding models and the whole save-understand-search loop runs locally with zero API costs." },
+              { q: "Does DROP need any AI setup?", a: "No. DROP Intelligence runs automatically on your device — no servers, API keys or models to configure. On phones that support it, DROP uses the system's on-device AI; everywhere else it uses its own private engine with a simple one-time download." },
+              { q: "Does DROP see my screenshots?", a: "DROP reads them to understand what they contain — that's the whole point — and it does so privately: on-device analysis, private by default, nothing ever public." },
               { q: "What counts toward the free 100 Drops?", a: "Every item you save — screenshots, links, notes, documents. Delete a Drop and the space frees up." },
             ].map((item) => (
               <AccordionItem key={item.q} value={item.q} className="rounded-2xl border border-border/70 bg-card px-5">

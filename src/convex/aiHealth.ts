@@ -1,8 +1,9 @@
 "use node";
 
-// AI diagnostics for the Settings → AI & Privacy page. Runs a real health
-// check against the active provider (Ollama /api/tags, Gemini key presence,
-// demo mode) so the UI can show Connected / Failed / Model Missing.
+// AI diagnostics for the Settings → DROP Intelligence page. Runs a real
+// health check against the active provider (built-in engine by default,
+// optional Gemini when a key exists) so the UI can show Ready / degraded
+// status. Never exposes model configuration to consumers.
 
 import { action } from "./_generated/server";
 import { checkAIHealth, resolveProvider } from "./ai";

@@ -1,17 +1,19 @@
 // AI provider factory for DROP.
 //
-// Resolution order (cheapest → most capable):
-//   1. Ollama (self-hosted, free) — used whenever OLLAMA_BASE_URL is set AND
-//      the server is reachable. This is the default free / local AI mode.
-//   2. Gemini — used when GOOGLE_API_KEY is set and Ollama is not configured
-//      or unreachable.
-//   3. DemoProvider — deterministic, keyless heuristic fallback so the product
-//      always works.
+// DROP is a zero-configuration consumer product. Resolution order:
+//   1. DemoProvider — deterministic, keyless, on-device-compatible analyzer
+//      (the SAME algorithm runs natively in the mobile apps via the DropAI
+//      engine). This is the default: no keys, no servers, no setup.
+//   2. Gemini — used only when GOOGLE_API_KEY is present. Optional; DROP
+//      never requires it and never stops working without it.
 //
-// `resolveProvider()` is async: it health-checks Ollama before choosing it, so
-// a misconfigured/offline local server never breaks the app — the pipeline
-// falls back to the next provider and the Settings page shows a clean message.
-// The result is cached briefly to avoid hammering the health endpoint.
+// Ollama is intentionally NOT part of the product. The file `ollama.ts`
+// remains only as a dev/diagnostic provider that is instantiated exclusively
+// when `OLLAMA_BASE_URL` is explicitly set by a developer — it is never
+// advertised, never defaulted, and never required anywhere.
+//
+// `resolveProvider()` is async so a configured-but-broken cloud provider can
+// be probed and skipped; the demo analyzer is always the safe landing spot.
 
 import type { AIHealth, AIProvider } from "./types";
 import { DemoProvider, demoEmbedText } from "./demo";
@@ -25,16 +27,15 @@ const RESOLVE_CACHE_MS = 90_000;
 
 export function getProvider(): AIProvider {
   if (cached) return cached;
-  const ollama = process.env.OLLAMA_BASE_URL ? new OllamaProvider(ollamaConfig()) : null;
   const key = process.env.GOOGLE_API_KEY;
-  cached = ollama ?? (key ? new GeminiProvider(key) : new DemoProvider());
+  cached = key ? new GeminiProvider(key) : new DemoProvider();
   return cached;
 }
 
 /**
- * Pick the best currently-available provider. Ollama is preferred when its env
- * vars are set and the server answers; otherwise Gemini; otherwise demo.
- * Async because the Ollama reachability probe is a network call.
+ * Pick the best currently-available provider: Gemini when a key is configured
+ * and reachable, otherwise the built-in deterministic analyzer. Async because
+ * the optional cloud reachability probe is a network call.
  */
 export async function resolveProvider(): Promise<AIProvider> {
   const now = Date.now();
@@ -42,32 +43,26 @@ export async function resolveProvider(): Promise<AIProvider> {
     return cached;
   }
 
-  if (!process.env.OLLAMA_BASE_URL) {
-    cached = getProvider();
-    lastResolvedAt = now;
-    return cached;
-  }
-
-  // Ollama is configured — probe it. Cache the probe result for a short while.
-  if (resolvePromise) return resolvePromise;
-  resolvePromise = (async () => {
-    const ollama = new OllamaProvider(ollamaConfig());
-    const reachable = await ollama.ping();
-    if (reachable) {
-      cached = ollama;
-    } else {
-      const key = process.env.GOOGLE_API_KEY;
-      cached = key ? new GeminiProvider(key) : new DemoProvider();
-    }
-    lastResolvedAt = now;
-    return cached;
-  })().finally(() => {
-    resolvePromise = null;
-  });
-  return resolvePromise;
+  // Optional cloud AI: Gemini when a key exists; otherwise the built-in
+  // deterministic engine (the zero-config default). A cloud failure at
+  // analysis time is caught by the pipeline and falls back to the built-in
+  // engine — the product never depends on the cloud.
+  cached = getProvider();
+  lastResolvedAt = now;
+  return cached;
 }
 
-/** Detailed health report for the AI & Privacy settings page. */
+/**
+ * Developer-only access to a self-hosted Ollama server. Returns null unless
+ * `OLLAMA_BASE_URL` is explicitly set (diagnostics / self-hosting). The
+ * consumer product never uses this.
+ */
+export function devOllamaProvider(): AIProvider | null {
+  if (!process.env.OLLAMA_BASE_URL) return null;
+  return new OllamaProvider(ollamaConfig());
+}
+
+/** Detailed health report for the Settings → DROP Intelligence page. */
 export async function checkAIHealth(): Promise<AIHealth> {
   const provider = await resolveProvider();
   if (provider.health) {
@@ -78,7 +73,7 @@ export async function checkAIHealth(): Promise<AIHealth> {
     return {
       ok: true,
       provider: "gemini",
-      label: "Google Gemini · cloud AI",
+      label: "Cloud intelligence · optional",
       local: false,
       models: {
         text: process.env.GEMINI_TEXT_MODEL ?? "gemini-1.5-flash",
@@ -90,9 +85,9 @@ export async function checkAIHealth(): Promise<AIHealth> {
   return {
     ok: true,
     provider: "demo",
-    label: "Built-in demo analyzer · no AI server",
-    local: false,
-    error: "No Ollama or Gemini configured. DROP runs its free deterministic analyzer — add a local Ollama server for real AI.",
+    label: "DROP Intelligence · built-in engine",
+    local: true,
+    error: undefined,
   };
 }
 

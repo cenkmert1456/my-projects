@@ -30,6 +30,7 @@ import { OnboardingOverlay } from "./OnboardingOverlay";
 import { CommandPalette } from "./CommandPalette";
 import { QuickDrop } from "./QuickDrop";
 import { AppLockOverlay } from "./AppLockOverlay";
+import DropIntelligenceOverlay from "./DropIntelligenceOverlay";
 import { cn } from "@/lib/utils";
 import { useAddDrop } from "./AddDropContext";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -397,6 +398,9 @@ export default function AppShell() {
             visibility + exit animation, so AnimatePresence never gets
             unmounted mid-exit (which crashes React with a removeChild error). */}
         {user && <OnboardingOverlay />}
+
+        {/* First-launch DROP Intelligence provisioning (native only) */}
+        <DropIntelligenceOverlay />
 
         {/* Biometric app lock */}
         {locked && (

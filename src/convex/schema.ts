@@ -168,6 +168,8 @@ const schema = defineSchema(
       url: v.optional(v.string()),
       text: v.optional(v.string()), // note text
       ocrText: v.optional(v.string()),
+      ocrLanguage: v.optional(v.string()),
+      ocrEngine: v.optional(v.string()),
       searchText: v.optional(v.string()),
       source: v.optional(v.string()),
       sourceUrl: v.optional(v.string()),

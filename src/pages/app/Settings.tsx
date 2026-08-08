@@ -4,24 +4,23 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/use-auth";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
-  Bot,
   Check,
+  ChevronDown,
   Cpu,
+  Database,
   Download,
-  Fingerprint,
   Globe,
+  HardDrive,
   Loader2,
   Lock,
   Moon,
   RefreshCw,
   Search,
   Shield,
-  Smartphone,
   Sparkles,
   Sun,
   Trash2,
   Wifi,
-  X,
   Zap,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -32,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { isNative } from "@/lib/mobile/platform";
 import { biometricsAvailable } from "@/lib/mobile/native";
 import { setAppLockDelay, setAppLockEnabled, type LockDelay } from "@/lib/mobile/app-lock";
+import { useDropAI } from "@/lib/drop-ai";
 
 type AIHealth = {
   ok: boolean;
@@ -58,6 +58,7 @@ export default function Settings() {
   const [lockDelay, setLockDelay] = useState<LockDelay>("immediate");
   const [biometricOk, setBiometricOk] = useState(false);
   const [wifiOnly, setWifiOnly] = useState(false);
+  const [storageBytes, setStorageBytes] = useState<number | null>(null);
 
   const runHealthCheck = async () => {
     setChecking(true);
@@ -112,109 +113,61 @@ export default function Settings() {
         </p>
       </div>
 
-      {/* AI & Privacy */}
-      <section className="space-y-4 rounded-3xl border border-border/80 bg-card p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bot className="h-5 w-5 text-primary" />
-            <h2 className="font-bold tracking-tight">AI & Privacy</h2>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 rounded-xl text-xs text-muted-foreground"
-            onClick={() => void runHealthCheck()}
-            disabled={checking}
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", checking && "animate-spin")} />
-            Re-check
-          </Button>
+      {/* DROP Intelligence */}
+      <DropIntelligenceSection
+        health={health}
+        checking={checking}
+        onRecheck={() => void runHealthCheck()}
+        wifiOnly={wifiOnly}
+        onWifiOnlyChange={async (v) => {
+          setWifiOnly(v);
+          const { getDropAI } = await import("@/lib/drop-ai");
+          const engine = await getDropAI();
+          await engine.setPolicy({ wifiOnly: v });
+          const { secureSet } = await import("@/lib/mobile/native");
+          await secureSet("wifiOnlyUploads", v ? "1" : "0");
+          toast(v ? "Large AI downloads will wait for Wi-Fi" : "AI downloads can use mobile data");
+        }}
+        storageBytes={storageBytes}
+        onRefreshStorage={async () => {
+          const { getDropAI } = await import("@/lib/drop-ai");
+          const engine = await getDropAI();
+          const info = await engine.getStorageInfo();
+          setStorageBytes(info?.sizeBytes ?? null);
+        }}
+      />
+
+      {/* Privacy */}
+      <section className="space-y-1 rounded-3xl border border-border/80 bg-card p-2">
+        <div className="px-3 pb-1 pt-2">
+          <h2 className="flex items-center gap-2 font-bold tracking-tight">
+            <Shield className="h-4 w-4 text-primary" /> Privacy center
+          </h2>
         </div>
-
-        <div className="rounded-2xl border border-border/70 bg-muted/40 p-4">
-          {checking && !health ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              Checking your AI setup…
-            </div>
-          ) : health ? (
-            <div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
-                    health.ok
-                      ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300"
-                      : "bg-amber-500/12 text-amber-600 dark:text-amber-300",
-                  )}
-                >
-                  {health.ok ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold tracking-tight">{health.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {health.ok
-                      ? health.local
-                        ? "Your AI processing runs on your own server. Your content never leaves your machine."
-                        : "Cloud AI provider — content is processed by the provider you configured."
-                      : "Not connected"}
-                  </p>
-                </div>
-                {health.latencyMs !== undefined && (
-                  <span className="shrink-0 rounded-xl bg-accent px-2.5 py-1 text-xs font-semibold text-accent-foreground">
-                    {health.latencyMs}ms
-                  </span>
-                )}
-              </div>
-
-              {health.ok && health.models && (
-                <div className="mt-3 grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-3">
-                  <ModelStat label="Text" value={health.models.text ?? "—"} />
-                  <ModelStat label="Vision" value={health.models.vision ?? "—"} />
-                  <ModelStat label="Embeddings" value={health.models.embedding ?? "—"} />
-                </div>
-              )}
-
-              {!health.ok && health.error && (
-                <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
-                  {health.error}
-                </p>
-              )}
-
-              {health.ok && health.local && (
-                <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/8 px-3 py-2.5">
-                  <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    <span className="font-bold text-foreground">Local AI</span> — your AI
-                    processing is configured through your own server. DROP never uploads
-                    your screenshots to a third party. (Database & files still live in
-                    DROP's cloud.)
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="space-y-1">
-          <SettingRow
-            icon={Lock}
-            title="Private by default"
-            desc="Every Drop starts private. Sharing is always your choice."
-          >
-            <Lock className="h-4 w-4 text-emerald-500" />
-          </SettingRow>
-          <SettingRow
-            icon={Search}
-            title="Search history"
-            desc="Save my searches to make repeat lookups faster"
-          >
-            <Switch
-              defaultChecked={user?.searchHistoryEnabled !== false}
-              onCheckedChange={(v) => void updateProfile({ patch: { searchHistoryEnabled: v } })}
-            />
-          </SettingRow>
-        </div>
+        <SettingRow icon={Lock} title="Private by default" desc="Every Drop starts private. Sharing is always your choice.">
+          <Lock className="h-4 w-4 text-emerald-500" />
+        </SettingRow>
+        <SettingRow
+          icon={Cpu}
+          title="AI processing"
+          desc={isNative() ? "Runs on this device — nothing leaves your phone" : "Built-in engine in DROP's secure backend"}
+        >
+          <span className="rounded-xl bg-emerald-500/12 px-2.5 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-300">
+            On device
+          </span>
+        </SettingRow>
+        <SettingRow icon={Search} title="Search history" desc="Save my searches to make repeat lookups faster">
+          <Switch
+            defaultChecked={user?.searchHistoryEnabled !== false}
+            onCheckedChange={(v) => void updateProfile({ patch: { searchHistoryEnabled: v } })}
+          />
+        </SettingRow>
+        <p className="px-3 pb-3 pt-1 text-xs leading-relaxed text-muted-foreground">
+          Screenshots you save are synchronized to your DROP account so they're
+          available on every device. AI understanding (OCR, categorization,
+          search vectors) runs on-device and never goes to a third-party AI
+          provider.
+        </p>
       </section>
 
       {/* Appearance */}
@@ -315,15 +268,6 @@ export default function Settings() {
   );
 }
 
-function ModelStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-card px-2.5 py-2">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 truncate font-mono text-[11px] font-semibold">{value}</p>
-    </div>
-  );
-}
-
 function SettingRow({
   icon: Icon,
   title,
@@ -346,5 +290,237 @@ function SettingRow({
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * DROP Intelligence — the only AI settings consumers ever see. Status, one
+ * Wi-Fi toggle, storage, and model controls. No models, no keys, no servers.
+ * Technical details live behind “Advanced”.
+ */
+function DropIntelligenceSection({
+  health,
+  checking,
+  onRecheck,
+  wifiOnly,
+  onWifiOnlyChange,
+  storageBytes,
+  onRefreshStorage,
+}: {
+  health: AIHealth | null;
+  checking: boolean;
+  onRecheck: () => void;
+  wifiOnly: boolean;
+  onWifiOnlyChange: (v: boolean) => void;
+  storageBytes: number | null;
+  onRefreshStorage: () => void;
+}) {
+  const { engine, status } = useDropAI();
+  const [advanced, setAdvanced] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const native = isNative();
+
+  useEffect(() => {
+    void onRefreshStorage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const downloading = status.phase === "downloading";
+  const detecting = status.phase === "detecting";
+  const ready = status.phase === "ready";
+  const needsConfirmation = status.phase === "error" && status.label === "needs_confirmation";
+  const pct = Math.round((status.progress ?? 0) * 100);
+
+  const handleRemove = async () => {
+    setRemoving(true);
+    try {
+      await engine?.removeModel();
+      await onRefreshStorage();
+      toast("AI engine removed — DROP still works, just lighter");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <section className="space-y-4 rounded-3xl border border-border/80 bg-card p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" />
+          <h2 className="font-bold tracking-tight">DROP Intelligence</h2>
+        </div>
+        {native && !downloading && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 rounded-xl text-xs text-muted-foreground"
+            onClick={() => void engine?.prepare()}
+            disabled={detecting}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", detecting && "animate-spin")} />
+            Re-check
+          </Button>
+        )}
+        {!native && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 rounded-xl text-xs text-muted-foreground"
+            onClick={onRecheck}
+            disabled={checking}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", checking && "animate-spin")} />
+            Re-check
+          </Button>
+        )}
+      </div>
+
+      {/* Status card */}
+      <div className="rounded-2xl border border-border/70 bg-muted/40 p-4">
+        <div className="flex items-center gap-3">
+          <span
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
+              ready
+                ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300"
+                : downloading
+                  ? "bg-primary/12 text-primary"
+                  : "bg-amber-500/12 text-amber-600 dark:text-amber-300",
+            )}
+          >
+            {ready ? (
+              <Check className="h-5 w-5" />
+            ) : downloading || detecting ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Sparkles className="h-5 w-5" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold tracking-tight">
+              {downloading
+                ? "Preparing your private AI…"
+                : detecting
+                  ? "Checking this device…"
+                  : needsConfirmation
+                    ? "One-time AI setup"
+                    : "Ready"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {downloading
+                ? `${status.label ?? "Downloading AI model"} · ${pct}%`
+                : detecting
+                  ? "DROP is picking the best engine for your device"
+                  : needsConfirmation
+                    ? "DROP needs to download its AI engine once (≈1.8 GB)"
+                    : native
+                      ? "Processing runs on this device"
+                      : health?.ok
+                        ? health.local
+                          ? "Built-in engine — no configuration needed"
+                          : "Optional cloud intelligence is enabled"
+                        : "Built-in engine — no configuration needed"}
+            </p>
+          </div>
+          <span
+            className={cn(
+              "shrink-0 rounded-xl px-2.5 py-1 text-xs font-bold",
+              ready ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300" : "bg-accent text-accent-foreground",
+            )}
+          >
+            {downloading ? `${pct}%` : native ? "On device" : "Automatic"}
+          </span>
+        </div>
+
+        {downloading && (
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+
+        {needsConfirmation && native && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              This one-time download makes DROP smarter on your device. You can
+              use DROP normally while it downloads.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="gap-1.5 rounded-xl"
+                onClick={async () => {
+                  await engine?.setPolicy({ wifiOnly: false });
+                  await onWifiOnlyChange(false);
+                  await engine?.prepare();
+                }}
+              >
+                <Download className="h-3.5 w-3.5" /> Download now
+              </Button>
+              <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setAdvanced((a) => !a)}>
+                Wait for Wi-Fi
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Simple controls (native) */}
+      {native && ready && (
+        <div className="space-y-1">
+          <SettingRow icon={Wifi} title="Download over Wi-Fi only" desc="Large AI downloads wait until you're on Wi-Fi">
+            <Switch checked={wifiOnly} onCheckedChange={(v) => void onWifiOnlyChange(v)} />
+          </SettingRow>
+          {storageBytes !== null && storageBytes > 0 && (
+            <SettingRow icon={HardDrive} title="AI engine storage" desc="Space used by the on-device AI engine">
+              <span className="rounded-xl bg-muted px-2.5 py-1 text-xs font-bold">
+                {(storageBytes / 1_000_000_000).toFixed(1)} GB
+              </span>
+            </SettingRow>
+          )}
+          {storageBytes !== null && storageBytes > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-3 gap-1.5 rounded-xl text-xs text-muted-foreground hover:text-destructive"
+              onClick={() => void handleRemove()}
+              disabled={removing}
+            >
+              {removing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Remove downloaded AI engine
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Advanced (diagnostics only) */}
+      <button
+        type="button"
+        onClick={() => setAdvanced((a) => !a)}
+        className="flex w-full items-center justify-between rounded-xl px-1 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+      >
+        Advanced
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advanced && "rotate-180")} />
+      </button>
+      {advanced && (
+        <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+          <p className="flex items-center gap-1.5">
+            <Database className="h-3.5 w-3.5" /> Engine status:{" "}
+            <span className="font-mono font-semibold">{status.phase}</span>
+            {status.tier && (
+              <>
+                · tier <span className="font-mono font-semibold">{status.tier}</span>
+              </>
+            )}
+          </p>
+          {health?.activeProvider && (
+            <p className="font-mono">server pipeline: {health.activeProvider}</p>
+          )}
+          <p>DROP picks the best engine automatically — nothing to configure.</p>
+        </div>
+      )}
+    </section>
   );
 }
