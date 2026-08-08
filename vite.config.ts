@@ -92,9 +92,10 @@ export default defineConfig({
     // Bind to all interfaces so WebContainer's server-ready event fires.
     host: true,
     port: 5173,
-    // Keep HMR on, but disable full-screen error overlay
-    hmr: {
-      overlay: false,
-    },
+    // HMR must stay disabled in Freebuff Web projects: the platform syncs file
+    // changes to the dev server, and hot updates corrupt the browser's module
+    // graph, causing "Failed to fetch dynamically imported module" runtime
+    // errors. Full page reloads pick up changes reliably.
+    hmr: false,
   },
 });
