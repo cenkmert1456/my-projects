@@ -3,6 +3,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/use-auth";
 import { profileService } from "@/lib/services";
 import { checkWebAI, type WebAIHealth } from "@/lib/ai-health";
+import { checkBackendHealth, type BackendHealth } from "@/lib/supabase/health";
 import {
   Check,
   ChevronDown,
@@ -47,6 +48,7 @@ export default function Settings() {
   const [biometricOk, setBiometricOk] = useState(false);
   const [wifiOnly, setWifiOnly] = useState(false);
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
+  const [backend, setBackend] = useState<BackendHealth | null>(null);
 
   const runHealthCheck = async () => {
     setChecking(true);
@@ -68,6 +70,7 @@ export default function Settings() {
 
   useEffect(() => {
     void runHealthCheck();
+    void checkBackendHealth().then(setBackend);
     void (async () => {
       const { appLockEnabled, loadAppLockSettings } = await import("@/lib/mobile/app-lock");
       await loadAppLockSettings();
@@ -132,6 +135,9 @@ export default function Settings() {
           setStorageBytes(info?.sizeBytes ?? null);
         }}
       />
+
+      {/* Backend & sync */}
+      <BackendStatusSection health={backend} onRecheck={() => void checkBackendHealth().then(setBackend)} />
 
       {/* Privacy */}
       <section className="space-y-1 rounded-3xl border border-border/80 bg-card p-2">
@@ -261,6 +267,101 @@ export default function Settings() {
         </Button>
       </section>
     </div>
+  );
+}
+
+/**
+ * Backend & sync — friendly connectivity status. Ordinary users only ever
+ * see "Connected" / "Offline"; developers can expand Advanced for details.
+ */
+function BackendStatusSection({
+  health,
+  onRecheck,
+}: {
+  health: BackendHealth | null;
+  onRecheck: () => void;
+}) {
+  const [advanced, setAdvanced] = useState(false);
+  const checking = health === null;
+
+  const connected = health?.ok === true;
+  const partially = health?.configured && !connected;
+
+  return (
+    <section className="space-y-3 rounded-3xl border border-border/80 bg-card p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Database className="h-5 w-5 text-primary" />
+          <h2 className="font-bold tracking-tight">Backend & sync</h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 rounded-xl text-xs text-muted-foreground"
+          onClick={onRecheck}
+          disabled={checking}
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", checking && "animate-spin")} />
+          Check
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/40 p-4">
+        <span
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
+            connected
+              ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300"
+              : "bg-amber-500/12 text-amber-600 dark:text-amber-300",
+          )}
+        >
+          {checking ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : connected ? (
+            <Check className="h-5 w-5" />
+          ) : (
+            <Wifi className="h-5 w-5" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold tracking-tight">
+            {checking ? "Checking connection…" : connected ? "Connected" : "Working offline"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {checking
+              ? "One moment"
+              : connected
+                ? health.latencyMs !== null
+                  ? `Your memory is synced · ${health.latencyMs}ms`
+                  : "Your memory is synced"
+                : partially
+                  ? "Offline — new Drops are queued and sync when you're back online"
+                  : "Offline mode — saved Drops stay on this device"}
+          </p>
+        </div>
+      </div>
+
+      {/* Developer diagnostics only */}
+      <button
+        type="button"
+        onClick={() => setAdvanced((a) => !a)}
+        className="flex w-full items-center justify-between rounded-xl px-1 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+      >
+        Advanced
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advanced && "rotate-180")} />
+      </button>
+      {advanced && (
+        <div className="space-y-1.5 rounded-2xl border border-border/70 bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+          {health?.diagnostics.map((line) => (
+            <p key={line} className="font-mono">
+              {line}
+            </p>
+          ))}
+          {!health?.diagnostics.length && <p className="font-mono">no diagnostics yet</p>}
+          <p className="pt-1">Nothing here is shared — it's only visible on this screen.</p>
+        </div>
+      )}
+    </section>
   );
 }
 

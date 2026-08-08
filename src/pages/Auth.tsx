@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 
 import { DropMark, Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowRight, Loader2, Lock, Mail, UserX } from "lucide-react";
+import { ArrowRight, Loader2, Lock, Mail, MailCheck, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -26,7 +26,7 @@ function resolveRedirectAfterAuth(returnTo: string | null, fallback = "/app") {
   return fallback;
 }
 
-type Mode = "signIn" | "signUp" | "forgot" | "reset";
+type Mode = "signIn" | "signUp" | "forgot" | "reset" | "confirm";
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const {
@@ -36,6 +36,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     signUp,
     resetPassword,
     updatePassword,
+    translateError,
   } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -49,14 +50,16 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
-  // Password-reset callback from Supabase (email link → app with #access_token).
+  // Password-reset callback from Supabase.
+  //   * web: email link → /auth#access_token=…&type=recovery
+  //   * native: deep link handler exchanged the token then navigated to /auth?mode=reset
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
+    if (hash.includes("type=recovery") || searchParams.get("mode") === "reset") {
       setMode("reset");
       window.history.replaceState(null, "", window.location.pathname);
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -72,13 +75,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       await signIn({ email, password });
       navigate(redirect);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message.includes("Invalid login")
-            ? "Wrong email or password."
-            : err.message
-          : "Could not sign in. Please try again.",
-      );
+      setError(translateError(err));
       setIsLoading(false);
     }
   };
@@ -88,10 +85,16 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      await signUp({ email, password, name: name || undefined });
-      navigate(redirect);
+      const { requiresEmailConfirmation } = await signUp({ email, password, name: name || undefined });
+      if (requiresEmailConfirmation) {
+        // Email confirmation is enabled — never navigate into a session that
+        // doesn't exist yet. Show a clear "check your email" state instead.
+        setMode("confirm");
+      } else {
+        navigate(redirect);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create your account.");
+      setError(translateError(err));
       setIsLoading(false);
     }
   };
@@ -105,7 +108,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       setSent(true);
       setIsLoading(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send reset email.");
+      setError(translateError(err));
       setIsLoading(false);
     }
   };
@@ -116,9 +119,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     try {
       await updatePassword(password);
-      navigate(redirect);
+      setMode("signIn");
+      setPassword("");
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update your password.");
+      setError(translateError(err));
       setIsLoading(false);
     }
   };
@@ -378,6 +383,35 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 Remembered it? Sign in
               </Button>
             </CardFooter>
+          </>
+        )}
+
+        {mode === "confirm" && (
+          <>
+            <CardHeader className="text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/12">
+                <MailCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-300" />
+              </div>
+              <CardTitle className="mt-4 text-xl font-extrabold tracking-tight">
+                Check your email to continue
+              </CardTitle>
+              <CardDescription className="mx-auto max-w-xs">
+                We've sent a confirmation link to <span className="font-semibold">{email}</span>.
+                Tap it to activate your account, then sign in.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                type="button"
+                className="h-11 w-full gap-2 rounded-xl font-semibold"
+                onClick={() => {
+                  setMode("signIn");
+                  setEmail("");
+                }}
+              >
+                Sign in <ArrowRight className="h-4 w-4" />
+              </Button>
+            </CardContent>
           </>
         )}
 

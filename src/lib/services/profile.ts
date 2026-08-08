@@ -42,6 +42,10 @@ export const profileService = {
       dailyRecallEnabled?: boolean;
       theme?: string;
       locale?: string;
+      username?: string;
+      timezone?: string;
+      currency?: string;
+      appearance?: string;
     },
   ): Promise<Profile | null> {
     const next: Partial<ProfilesInsert> = {};
@@ -51,6 +55,10 @@ export const profileService = {
     if (patch.dailyRecallEnabled !== undefined) next.daily_recall_enabled = patch.dailyRecallEnabled;
     if (patch.theme !== undefined) next.theme = patch.theme;
     if (patch.locale !== undefined) next.locale = patch.locale;
+    if (patch.username !== undefined) next.username = patch.username;
+    if (patch.timezone !== undefined) next.timezone = patch.timezone;
+    if (patch.currency !== undefined) next.currency = patch.currency;
+    if (patch.appearance !== undefined) next.appearance = patch.appearance;
     const { data, error } = await supabase
       .from("profiles")
       .update(next)

@@ -122,11 +122,39 @@ export function useMobileApp() {
     void flush();
   }, [online, isAuthenticated, userId]);
 
-  // Deep links: drop://drop/123, drop://collection/abc
+  // Deep links: drop://drop/123, drop://collection/abc,
+  // and Supabase auth callbacks (drop://auth/callback#access_token=…&type=recovery).
   useEffect(() => {
-    const onDeepLink = (link: { path: string; query: Record<string, string> }) => {
+    const onDeepLink = async (link: { path: string; query: Record<string, string>; raw?: string }) => {
       void markActive();
       const [first, second] = link.path.split("/");
+
+      // Supabase email links (recovery / confirmation) deep-link here on native.
+      if (first === "auth" && (second === "callback" || second === "verify" || second === "reset-password")) {
+        const { supabase } = await import("@/lib/supabase/client");
+        const raw = link.raw ?? "";
+        const frag = new URLSearchParams(raw.split("#")[1] ?? "");
+        const type = frag.get("type") ?? link.query.type ?? "";
+        const code = frag.get("code") ?? link.query.code ?? "";
+        const accessToken = frag.get("access_token") ?? "";
+        const refreshToken = frag.get("refresh_token") ?? "";
+        try {
+          if (accessToken) {
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            } as never);
+          } else if (code) {
+            await supabase.auth.exchangeCodeForSession(code);
+          }
+        } catch {
+          // session exchange failed — fall through to the auth page
+        }
+        if (type === "recovery") navigate("/auth?mode=reset");
+        else navigate("/app");
+        return;
+      }
+
       if (first === "drop" && second) navigate(`/app/drop/${second}`);
       else if (first === "collection" && second) navigate(`/app/collections/${second}`);
       else if (first === "ask") navigate("/app/ask");

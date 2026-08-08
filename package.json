@@ -19,7 +19,9 @@
     "mobile:assets": "node scripts/mobile-assets.mjs && capacitor-assets generate --iconBackgroundColor '#e84c1f' --iconBackgroundColorDark '#e84c1f' --splashBackgroundColor '#15130f' --splashBackgroundColorDark '#15130f' --logoSplashScale 0.35",
     "build:android": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
     "build:android:release": "npm run build && cap sync android && cd android && ./gradlew bundleRelease",
-    "build:ios": "npm run build && cap sync ios && cd ios/App && xcodebuild -scheme App -configuration Debug -sdk iphonesimulator build"
+    "build:ios": "npm run build && cap sync ios && cd ios/App && xcodebuild -scheme App -configuration Debug -sdk iphonesimulator build",
+    "supabase:setup": "node scripts/setup-supabase.mjs",
+    "supabase:verify": "node scripts/verify-supabase.mjs"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "10.0.0",

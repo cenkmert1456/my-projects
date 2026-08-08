@@ -343,9 +343,10 @@ export default function AppShell() {
           </div>
         )}
 
-        {/* Main content */}
+        {/* Main content — full-bleed on mobile (true app feel), the desktop
+            max-width wrapper only applies from lg up. */}
         <main className={cn("pb-24 lg:pb-10 lg:pl-60", online ? "" : "pt-0")}>
-          <div className="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6 lg:px-10">
+          <div className="w-full px-4 pt-4 sm:px-5 lg:mx-auto lg:max-w-5xl lg:px-10 lg:pt-6">
             <Outlet />
           </div>
         </main>

@@ -414,9 +414,11 @@ export async function lockPortrait(): Promise<void> {
 export interface DeepLink {
   path: string; // e.g. "drop/123" or "collection/abc"
   query: Record<string, string>;
+  /** Full original URL (includes any #fragment — used for auth callbacks). */
+  raw?: string;
 }
 
-/** Parse a `drop://host/path?query` or https fallback URL into a route. */
+/** Parse a `drop://host/path?query#fragment` or https fallback URL into a route. */
 export function parseDeepLink(url: string): DeepLink | null {
   try {
     const u = new URL(url);
@@ -425,7 +427,7 @@ export function parseDeepLink(url: string): DeepLink | null {
     u.searchParams.forEach((v, k) => {
       query[k] = v;
     });
-    return { path, query };
+    return { path, query, raw: url };
   } catch {
     return null;
   }

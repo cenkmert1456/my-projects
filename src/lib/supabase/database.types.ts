@@ -52,6 +52,23 @@ export interface Database {
       notifications: { Row: NotificationsRow; Insert: NotificationsInsert; Update: Partial<NotificationsInsert>; Relationships: [] };
       activities: { Row: ActivitiesRow; Insert: ActivitiesInsert; Update: Partial<ActivitiesInsert>; Relationships: [] };
       plans: { Row: PlansRow; Insert: PlansInsert; Update: Partial<PlansInsert>; Relationships: [] };
+      collection_members: {
+        Row: CollectionMembersRow;
+        Insert: CollectionMembersInsert;
+        Update: Partial<CollectionMembersInsert>;
+        Relationships: [
+          {
+            foreignKeyName: "collection_members_collection_id_fkey",
+            columns: ["collection_id"],
+            referencedRelation: "collections",
+            referencedColumns: ["id"],
+          },
+        ];
+      };
+      user_settings: { Row: UserSettingsRow; Insert: UserSettingsInsert; Update: Partial<UserSettingsInsert>; Relationships: [] };
+      devices: { Row: DevicesRow; Insert: DevicesInsert; Update: Partial<DevicesInsert>; Relationships: [] };
+      push_tokens: { Row: PushTokensRow; Insert: PushTokensInsert; Update: Partial<PushTokensInsert>; Relationships: [] };
+      processing_jobs: { Row: ProcessingJobsRow; Insert: ProcessingJobsInsert; Update: Partial<ProcessingJobsInsert>; Relationships: [] };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -79,6 +96,10 @@ export type ProfilesRow = {
   locale: string | null;
   theme: string | null;
   onboarded_at: number | null;
+  username: string | null;
+  timezone: string | null;
+  currency: string | null;
+  appearance: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -98,9 +119,13 @@ export type DropsRow = {
   archived: boolean;
   pinned: boolean;
   sensitive: boolean;
+  locked: boolean;
   notes: string | null;
   deleted_at: number | null;
   saved_at: number;
+  description: string | null;
+  document_metadata: Json | null;
+  ai_metadata: Json | null;
   status: string;
   analysis_status: string;
   analysis_version: number | null;
@@ -195,6 +220,7 @@ export type RemindersRow = {
   text: string;
   remind_at: number;
   status: string;
+  completed_at: number | null;
   created_at: number;
   updated_at: number;
 };
@@ -277,6 +303,73 @@ export type PlansRow = {
   features: Json;
 };
 export type PlansInsert = Partial<PlansRow> & { plan_id: string; name: string };
+
+export type CollectionMembersRow = {
+  id: string;
+  collection_id: string;
+  user_id: string;
+  role: string;
+  created_at: number;
+};
+export type CollectionMembersInsert = Partial<CollectionMembersRow> & {
+  collection_id: string;
+  user_id: string;
+};
+
+export type UserSettingsRow = {
+  user_id: string;
+  theme: string;
+  language: string;
+  currency: string;
+  timezone: string | null;
+  rediscover_enabled: boolean;
+  notifications_enabled: boolean;
+  privacy: Json;
+  search: Json;
+  ai: Json;
+  wifi_only_model_download: boolean;
+  mobile_upload: Json;
+  created_at: number;
+  updated_at: number;
+};
+export type UserSettingsInsert = Partial<UserSettingsRow> & { user_id: string };
+
+export type DevicesRow = {
+  id: string;
+  user_id: string;
+  device_id: string | null;
+  platform: string | null;
+  app_version: string | null;
+  last_seen_at: number | null;
+  created_at: number;
+  updated_at: number;
+};
+export type DevicesInsert = Partial<DevicesRow> & { user_id: string };
+
+export type PushTokensRow = {
+  id: string;
+  user_id: string;
+  device_id: string | null;
+  token: string;
+  provider: string;
+  created_at: number;
+};
+export type PushTokensInsert = Partial<PushTokensRow> & { user_id: string; token: string };
+
+export type ProcessingJobsRow = {
+  id: string;
+  user_id: string;
+  drop_id: string | null;
+  job_type: string;
+  status: string;
+  progress: number;
+  error: string | null;
+  started_at: number | null;
+  completed_at: number | null;
+  created_at: number;
+  updated_at: number;
+};
+export type ProcessingJobsInsert = Partial<ProcessingJobsRow> & { user_id: string; job_type: string };
 
 // ---------------------------------------------------------------------------
 // Application aliases (camelCase — what the UI consumes)
@@ -365,7 +458,7 @@ export type SuggestedReminderMeta = {
 /** The Drop document as the app has always known it. */
 export interface Drop {
   id: string;
-  /** Alias of `id` — legacy UI used Convex `_id`. */
+  /** Alias of `id` — kept for legacy UI compatibility. */
   _id: string;
   userId: string;
   kind: DropKind;
@@ -379,9 +472,13 @@ export interface Drop {
   archived?: boolean;
   pinned?: boolean;
   sensitive?: boolean;
+  locked?: boolean;
   notes?: string;
   deletedAt?: number;
   savedAt: number;
+  description?: string;
+  documentMetadata?: Record<string, unknown>;
+  aiMetadata?: Record<string, unknown>;
   status: DropStatus;
   analysisStatus: AnalysisStatus;
   analysisVersion?: number;
@@ -420,7 +517,7 @@ export interface Drop {
 
 export interface Collection {
   id: string;
-  /** Alias of `id` — legacy UI used Convex `_id`. */
+  /** Alias of `id` — kept for legacy UI compatibility. */
   _id: string;
   userId: string;
   name: string;
@@ -439,7 +536,7 @@ export interface CollectionWithCount extends Collection {
 
 export interface Stack {
   id: string;
-  /** Alias of `id` — legacy UI used Convex `_id`. */
+  /** Alias of `id` — kept for legacy UI compatibility. */
   _id: string;
   userId: string;
   name: string;
@@ -460,7 +557,7 @@ export type ReminderStatus = "pending" | "completed" | "dismissed";
 
 export interface Reminder {
   id: string;
-  /** Alias of `id` — legacy UI used Convex `_id`. */
+  /** Alias of `id` — kept for legacy UI compatibility. */
   _id: string;
   userId: string;
   dropId: string;
@@ -469,6 +566,7 @@ export interface Reminder {
   text: string;
   remindAt: number;
   status: ReminderStatus;
+  completedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -488,13 +586,17 @@ export interface Profile {
   locale?: string;
   theme?: string;
   onboardedAt?: number;
+  username?: string;
+  timezone?: string;
+  currency?: string;
+  appearance?: string;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface SearchHistory {
   id: string;
-  /** Alias of `id` — legacy UI used Convex `_id`. */
+  /** Alias of `id` — kept for legacy UI compatibility. */
   _id: string;
   userId: string;
   query: string;

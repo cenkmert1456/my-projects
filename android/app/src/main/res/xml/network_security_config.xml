@@ -2,7 +2,7 @@
 <!--
   DROP network security config.
 
-  Production builds only talk HTTPS (Convex cloud + signed storage URLs), which
+  Production builds only talk HTTPS (Supabase + signed storage URLs), which
   is allowed by default. The debug override permits the local dev server
   (http://10.0.2.2 / localhost) so `cap run android` works against a local
   backend without weakening release builds.

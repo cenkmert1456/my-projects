@@ -67,6 +67,8 @@ bun install
 bun run dev                # starts the Vite dev server
 ```
 
+### Automatic backend provisioning (no manual SQL)
+
 Point the app at your Supabase project with two public env vars
 (no backend to run locally):
 
@@ -75,15 +77,27 @@ VITE_SUPABASE_URL=https://<project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon key>
 ```
 
-Apply the schema (tables, RLS policies, storage buckets, pgvector) from the
-migrations directory:
+Then provision the database **automatically** — tables, RLS policies, storage
+buckets, pgvector, triggers and the search RPC are all applied by one command:
 
 ```bash
-supabase link --project-ref <project>
-supabase db push
+# Needs a personal access token + project ref (add to the Freebuff Keys tab,
+# or pass --token / --ref):
+npm run supabase:setup
 ```
 
-No Convex deployment, no codegen, no auth issuer — nothing else to run.
+This applies every migration in `supabase/migrations/` through the Supabase
+Management API and verifies tables, RLS, storage buckets and auth health.
+
+```bash
+# Full end-to-end test against the live backend (register → login → drop →
+# upload → search → collections → isolation):
+npm run supabase:verify
+```
+
+The CLI alternative (`supabase link --project-ref <project> && supabase db
+push`) works too — `supabase/config.toml` is included. No Convex deployment,
+no codegen, no auth issuer — nothing else to run.
 
 ---
 
@@ -154,6 +168,11 @@ supabase/migrations/0001_initial_schema.sql
                        notifications, activities, plans — with UUID keys, JSONB
                        metadata, pgvector(128) embeddings, full RLS policies
                        and private storage buckets (drop-files)
+0002_production_tables.sql
+                       Production tables: user_settings, devices, push_tokens,
+                       processing_jobs, collection_members; profile auto-create
+                       trigger on auth.users; drop_search hybrid RPC; avatars
+                       bucket; realtime publications; extra indexes
 
 src/lib/services/     The data-access layer — drops, collections, stacks,
                        reminders, search (hybrid + Ask DROP), profile, storage
@@ -412,13 +431,15 @@ the app switcher on supported platforms.
 
 For production:
 
-1. Create a Supabase project and apply the migrations
-   (`supabase db push`) — tables, RLS, storage buckets and pgvector are all
-   included in `supabase/migrations/`.
-2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for the frontend
-   build (public values only — the service-role key never ships in the app).
-3. Enable email/password auth in the Supabase dashboard (and password reset).
-4. `bun run build && bun run preview` (or host the static build) for the
+1. Create a Supabase project (or use an existing one).
+2. Add `SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF` (and
+   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`) to the Freebuff Keys tab.
+3. Run `npm run supabase:setup` — this **applies** every migration
+   automatically (tables, RLS, storage buckets, pgvector, triggers, RPC) and
+   verifies the result. No manual SQL.
+4. Run `npm run supabase:verify` to exercise the real backend end-to-end
+   (register → login → drop → upload → search → isolation).
+5. `npm run build && npm run preview` (or host the static build) for the
    frontend.
 
 ## Troubleshooting

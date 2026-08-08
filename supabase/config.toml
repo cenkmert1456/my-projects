@@ -1,0 +1,69 @@
+# ============================================================================
+# DROP — Supabase CLI project configuration
+#
+# Used by `supabase link --project-ref <ref>` and `supabase db push` to apply
+# migrations automatically. Replace the values below with your project's:
+#
+#   project_id      = the project reference (the part before .supabase.co)
+#   site_url        = your web origin (or the Freebuff preview origin)
+#   additional_redirect_urls = include drop://auth/callback for mobile
+#
+# Required frontend env vars (paste into the Freebuff Keys/API keys tab):
+#   VITE_SUPABASE_URL        = https://<ref>.supabase.co
+#   VITE_SUPABASE_ANON_KEY   = the anon/publishable key
+# ============================================================================
+
+project_id = "drop"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = [
+  "drop://auth/callback",
+  "https://*.freebuff.app/*",
+  "https://*.freebuff.dev/*",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+allow_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false
+
+[auth.mfa]
+enabled = true
+
+[realtime]
+enabled = true
+
+[analytics]
+enabled = false

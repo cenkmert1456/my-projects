@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { supabase } from "./client";
 import type { Profile } from "./database.types";
 import { profileService } from "@/lib/services/profile";
+import { authErrorMessage } from "./auth-errors";
 
 export interface SignInInput {
   email: string;
@@ -19,11 +20,14 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   user: Profile | null;
   signIn: (input: SignInInput) => Promise<void>;
-  signUp: (input: SignUpInput) => Promise<void>;
+  /** Resolves with true when the account needs email confirmation before first login. */
+  signUp: (input: SignUpInput) => Promise<{ requiresEmailConfirmation: boolean }>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Human-readable translation of a Supabase auth error. */
+  translateError: (error: unknown) => string;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -31,11 +35,12 @@ const AuthContext = createContext<AuthContextValue>({
   isAuthenticated: false,
   user: null,
   signIn: async () => {},
-  signUp: async () => {},
+  signUp: async () => ({ requiresEmailConfirmation: false }),
   resetPassword: async () => {},
   updatePassword: async () => {},
   signOut: async () => {},
   refreshProfile: async () => {},
+  translateError: (error) => authErrorMessage(error),
 });
 
 async function ensureProfile(userId: string, email?: string, name?: string): Promise<Profile | null> {
@@ -101,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   }, []);
 
-  const signUp = useCallback(async (input: SignUpInput) => {
+  const signUp = useCallback(async (input: SignUpInput): Promise<{ requiresEmailConfirmation: boolean }> => {
     const { data, error } = await supabase.auth.signUp({
       email: input.email.trim().toLowerCase(),
       password: input.password,
@@ -109,9 +114,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (error) throw error;
     if (data.session) {
-      // Session is active immediately — profile row is created on auth change.
+      // Session is active immediately — profile row is created by the DB
+      // trigger (handle_new_user) and/or on auth change.
       setIsAuthenticated(true);
+      return { requiresEmailConfirmation: false };
     }
+    // No session returned → the project has email confirmation enabled.
+    // The user must click the confirmation link before signing in.
+    return { requiresEmailConfirmation: Boolean(data.user) };
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
@@ -135,6 +145,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (data.session?.user) await loadProfile(data.session.user.id);
   }, [loadProfile]);
 
+  const translateError = useCallback((error: unknown) => authErrorMessage(error), []);
+
   const value = useMemo(
     () => ({
       isLoading,
@@ -146,8 +158,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updatePassword,
       signOut,
       refreshProfile,
+      translateError,
     }),
-    [isLoading, isAuthenticated, user, signIn, signUp, resetPassword, updatePassword, signOut, refreshProfile],
+    [isLoading, isAuthenticated, user, signIn, signUp, resetPassword, updatePassword, signOut, refreshProfile, translateError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
