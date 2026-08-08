@@ -1,5 +1,5 @@
 // Client-side presentation metadata for DROP categories, kinds, sources and
-// entity types. Kept separate from src/convex/lib/constants.ts because these
+// entity types. Lives separately from the Supabase data layer because these
 // include Tailwind class names that must be statically analyzable.
 
 export const CATEGORY_META: Record<

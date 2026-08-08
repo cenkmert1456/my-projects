@@ -1,8 +1,7 @@
-import { api } from "@/convex/_generated/api";
 import { DropMark } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation } from "convex/react";
+import { profileService } from "@/lib/services";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Camera, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
@@ -43,20 +42,20 @@ export function OnboardingOverlay() {
   const [step, setStep] = useState(0);
   const [withDemo, setWithDemo] = useState(true);
   const [busy, setBusy] = useState(false);
-  const updateProfile = useMutation(api.profile.updateProfile);
-  const loadDemoData = useMutation(api.profile.loadDemoData);
 
   const finish = async () => {
     setBusy(true);
     try {
-      if (withDemo) {
-        try {
-          await loadDemoData();
-        } catch {
-          // demo data is optional
+      if (user?.id) {
+        if (withDemo) {
+          try {
+            await profileService.loadDemoData(user.id);
+          } catch {
+            // demo data is optional
+          }
         }
+        await profileService.updateProfile(user.id, { onboardingDone: true });
       }
-      await updateProfile({ patch: { onboardingDone: true } });
     } finally {
       setBusy(false);
     }

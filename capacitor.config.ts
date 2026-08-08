@@ -24,7 +24,7 @@ const config: CapacitorConfig = {
 
   ios: {
     contentInset: "always",
-    // Required so Convex + signed storage URLs (https) work inside the app.
+    // Required so Supabase auth + signed storage URLs (https) work inside the app.
     limitsNavigationsToAppBoundDomains: false,
   },
 

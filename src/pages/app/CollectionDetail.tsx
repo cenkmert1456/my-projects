@@ -1,8 +1,9 @@
-import { api } from "@/convex/_generated/api";
 import { DropCard } from "@/components/drops/DropCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { collectionService } from "@/lib/services";
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -11,13 +12,16 @@ import { toast } from "sonner";
 export default function CollectionDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const data = useQuery(api.collections.get, { collectionId: id as never });
-  const removeDrop = useMutation(api.collections.removeDrop);
-  const updateCollection = useMutation(api.collections.update);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data, loading } = useRealtimeQuery(
+    () => collectionService.get(uid as string, id as string),
+    { table: "collection_drops", userId: uid },
+  );
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState("");
 
-  if (!data) {
+  if (loading || !data) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -43,7 +47,7 @@ export default function CollectionDetail() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              await updateCollection({ id: collection._id, patch: { name: name.trim() } });
+              await collectionService.update(uid as string, collection._id, { name: name.trim() });
               setEditingName(false);
               toast("Renamed");
             }}
@@ -90,7 +94,7 @@ export default function CollectionDetail() {
                 size="icon"
                 aria-label="Remove from collection"
                 onClick={async () => {
-                  await removeDrop({ collectionId: collection._id, dropId: drop._id });
+                  await collectionService.removeDrop(uid as string, collection._id, drop._id);
                   toast("Removed from collection");
                 }}
                 className="absolute right-2 top-2 h-7 w-7 cursor-pointer rounded-full bg-background/80 text-muted-foreground backdrop-blur hover:text-destructive"

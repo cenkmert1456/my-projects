@@ -1,14 +1,15 @@
-import { api } from "@/convex/_generated/api";
 import { DropCard } from "@/components/drops/DropCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAction, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { searchService } from "@/lib/services";
 import { Loader2, Search as SearchIcon, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { cn } from "@/lib/utils";
 import { CATEGORY_META } from "@/lib/drop-meta";
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { SearchHit } from "@/lib/supabase/database.types";
 
 const QUICK_FILTERS = [
   { id: "today", label: "Today" },
@@ -30,14 +31,9 @@ const EXAMPLES = [
   "what I saved from Instagram last month",
 ];
 
-type SearchHit = {
-  drop: Doc<"drops">;
-  score: number;
-  matched: string[];
-  semantic: boolean;
-};
-
 export default function Search() {
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
   const [params, setParams] = useSearchParams();
   const initialQuery = params.get("q") ?? "";
   const [query, setQuery] = useState(initialQuery);
@@ -46,13 +42,15 @@ export default function Search() {
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState(0);
-  const searchDrops = useAction(api.search.searchDrops);
-  const recentSearches = useQuery(api.searchHistory.list, { limit: 8 });
+  const { data: recentSearches } = useRealtimeQuery(
+    () => searchService.listSearchHistory(uid as string, 8),
+    { table: "search_history", userId: uid },
+  );
   const debounceRef = useRef<number | null>(null);
   const navigate = useNavigate();
 
   const runSearch = async (q: string) => {
-    if (!q.trim()) {
+    if (!q.trim() || !uid) {
       setHits(null);
       setCount(0);
       return;
@@ -61,22 +59,19 @@ export default function Search() {
     try {
       const day = 86400000;
       const now = Date.now();
-      const res = await searchDrops({
-        query: q,
-        filters: {
-          limit: 24,
-          ...(category ? { category } : {}),
-          ...(quick === "today" ? { dateFrom: new Date(now).setHours(0, 0, 0, 0) } : {}),
-          ...(quick === "week" ? { dateFrom: now - 7 * day } : {}),
-          ...(quick === "screenshots" ? { kind: "screenshot" } : {}),
-          ...(quick === "links" ? { kind: "link" } : {}),
-          ...(quick === "products" ? { category: "Products" } : {}),
-          ...(quick === "places" ? { category: "Places" } : {}),
-          ...(quick === "travel" ? { category: "Travel" } : {}),
-          ...(quick === "receipts" ? { category: "Receipts" } : {}),
-        },
+      const res = await searchService.searchDrops(uid, q, {
+        limit: 24,
+        ...(category ? { category } : {}),
+        ...(quick === "today" ? { dateFrom: new Date(now).setHours(0, 0, 0, 0) } : {}),
+        ...(quick === "week" ? { dateFrom: now - 7 * day } : {}),
+        ...(quick === "screenshots" ? { kind: "screenshot" } : {}),
+        ...(quick === "links" ? { kind: "link" } : {}),
+        ...(quick === "products" ? { category: "Products" } : {}),
+        ...(quick === "places" ? { category: "Places" } : {}),
+        ...(quick === "travel" ? { category: "Travel" } : {}),
+        ...(quick === "receipts" ? { category: "Receipts" } : {}),
       });
-      setHits(res.results as SearchHit[]);
+      setHits(res.results);
       setCount(res.count);
     } finally {
       setLoading(false);
@@ -93,7 +88,7 @@ export default function Search() {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, quick, category]);
+  }, [query, quick, category, uid]);
 
   const hasQuery = query.trim().length > 0;
   const showExamples = !hasQuery && !loading && (!hits || hits.length === 0);

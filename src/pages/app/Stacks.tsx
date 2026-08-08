@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,7 +9,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { stackService } from "@/lib/services";
 import { Layers, Loader2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
@@ -18,9 +19,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export default function Stacks() {
-  const stacks = useQuery(api.stacks.list);
-  const createStack = useMutation(api.stacks.create);
-  const removeStack = useMutation(api.stacks.remove);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data: stacks, loading } = useRealtimeQuery(
+    () => stackService.list(uid as string),
+    { table: "stacks", userId: uid },
+  );
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -30,10 +34,10 @@ export default function Stacks() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !uid) return;
     setSaving(true);
     try {
-      const id = await createStack({
+      const created = await stackService.create(uid, {
         name,
         emoji: emoji.trim() || undefined,
         description: description.trim() || undefined,
@@ -43,7 +47,7 @@ export default function Stacks() {
       setName("");
       setEmoji("");
       setDescription("");
-      navigate(`/app/stacks/${id}`);
+      navigate(`/app/stacks/${created.id}`);
     } catch {
       toast("Couldn't create the stack");
     } finally {
@@ -51,7 +55,7 @@ export default function Stacks() {
     }
   };
 
-  if (!stacks) {
+  if (loading || !stacks) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -204,7 +208,7 @@ export default function Stacks() {
               variant="destructive"
               className="rounded-xl"
               onClick={async () => {
-                if (confirmDelete) await removeStack({ id: confirmDelete as never });
+                if (confirmDelete) await stackService.remove(uid as string, confirmDelete);
                 toast("Stack deleted");
                 setConfirmDelete(null);
               }}

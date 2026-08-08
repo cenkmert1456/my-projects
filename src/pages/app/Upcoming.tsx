@@ -1,18 +1,25 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService, reminderService } from "@/lib/services";
 import { Bell, CalendarClock, Check, Loader2, X } from "lucide-react";
 import { useNavigate } from "react-router";
 import { formatDateTime } from "@/lib/format";
 
 export default function Upcoming() {
-  const upcoming = useQuery(api.drops.upcoming);
-  const reminders = useQuery(api.reminders.listUpcoming);
-  const completeReminder = useMutation(api.reminders.complete);
-  const dismissReminder = useMutation(api.reminders.dismiss);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data: upcoming, loading: loadingDrops } = useRealtimeQuery(
+    () => dropService.upcoming(uid as string),
+    { table: "drops", userId: uid },
+  );
+  const { data: reminders, loading: loadingReminders } = useRealtimeQuery(
+    () => reminderService.listUpcoming(uid as string),
+    { table: "reminders", userId: uid },
+  );
   const navigate = useNavigate();
 
-  if (!upcoming || !reminders) {
+  if (loadingDrops || loadingReminders || !upcoming || !reminders) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -93,7 +100,7 @@ export default function Upcoming() {
                   variant="ghost"
                   size="icon"
                   aria-label="Complete"
-                  onClick={() => completeReminder({ id: r._id })}
+                  onClick={() => void reminderService.complete(uid as string, r._id)}
                   className="text-muted-foreground hover:text-primary"
                 >
                   <Check className="h-4 w-4" />
@@ -102,7 +109,7 @@ export default function Upcoming() {
                   variant="ghost"
                   size="icon"
                   aria-label="Dismiss"
-                  onClick={() => dismissReminder({ id: r._id })}
+                  onClick={() => void reminderService.dismiss(uid as string, r._id)}
                   className="text-muted-foreground hover:text-destructive"
                 >
                   <X className="h-4 w-4" />

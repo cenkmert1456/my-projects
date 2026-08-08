@@ -1,26 +1,24 @@
-"use node";
+/**
+ * searchService — hybrid search (keyword + on-device embeddings + metadata
+ * filters) and Ask DROP (grounded retrieval → local engine synthesis).
+ *
+ * Port of the old backend search action. Every query is scoped to the
+ * authenticated user id; embeddings come from DROP Native AI (same
+ * deterministic algorithm across web/native), stored per-drop.
+ */
 
-// Hybrid search: DROP combines
-//   1. keyword scoring  (titles, summaries, keywords, tags, text, OCR)
-//   2. semantic vectors (cosine similarity over embeddings)
-//   3. metadata filters (category, kind, source, place, price, dates, tags)
-// and ranks everything together, so vague natural-language queries like
-// "that weird lamp I liked" still surface the right Drop.
-//
-// Natural time language is parsed into date filters:
-//   "today", "yesterday", "last week", "last month", "in June",
-//   "three months ago", "saved around March" …
-//
-// Scale note (MVP): each search scans the user's own Drops and scores them in
-// memory. That is fine for a personal memory (hundreds–low thousands of
-// Drops). The natural upgrade path is a vector index — the schema already
-// isolates embeddings for that migration.
-
-import { action } from "./_generated/server";
-import { internal } from "./_generated/api";
-import { v } from "convex/values";
-import { resolveProvider } from "./ai";
-import type { Doc, Id } from "./_generated/dataModel";
+import { supabase } from "@/lib/supabase/client";
+import { cosineSimilarity, dropEmbedText } from "@/lib/embed";
+import type {
+  AskResult,
+  AskSource,
+  Drop,
+  SearchFilters,
+  SearchHit,
+  SearchHistory,
+} from "@/lib/supabase/database.types";
+import { rowToDrop, rowToSearchHistory } from "./mappers";
+import { dropService, EMBEDDING_PROVIDER } from "./drops";
 
 const STOPWORDS = new Set([
   "the", "a", "an", "and", "or", "of", "to", "in", "for", "on", "with",
@@ -33,27 +31,19 @@ const STOPWORDS = new Set([
   "around", "during", "near", "before", "after", "since", "between",
 ]);
 
-const SEARCH_FILTERS = v.object({
-  category: v.optional(v.string()),
-  kind: v.optional(v.string()),
-  source: v.optional(v.string()),
-  place: v.optional(v.string()),
-  minPrice: v.optional(v.number()),
-  maxPrice: v.optional(v.number()),
-  dateFrom: v.optional(v.number()),
-  dateTo: v.optional(v.number()),
-  collectionId: v.optional(v.id("collections")),
-  tag: v.optional(v.string()),
-  starred: v.optional(v.boolean()),
-  includeArchived: v.optional(v.boolean()),
-  limit: v.optional(v.number()),
-});
-
 const DAY = 1000 * 60 * 60 * 24;
-const MONTHS = ["january", "february", "march", "april", "may", "june",
-  "july", "august", "september", "october", "november", "december"];
+const MONTHS = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
 
-/** Parse fuzzy human time phrases into a date window (ms epoch). */
+function tokenize(q: string): string[] {
+  return q
+    .toLowerCase()
+    .split(/[^a-z0-9€$£¥à-ÿ]+/)
+    .filter(Boolean);
+}
+
 export function timeWindowFromQuery(query: string): { dateFrom?: number; dateTo?: number } | null {
   const q = query.toLowerCase();
   const now = Date.now();
@@ -71,11 +61,9 @@ export function timeWindowFromQuery(query: string): { dateFrom?: number; dateTo?
   if (/\bthis month\b/.test(q)) return rel(29);
   if (/\bthis year\b/.test(q)) return { dateFrom: new Date(new Date().getFullYear(), 0, 1).getTime() };
 
-  // "last N days" / "past N days"
   const daysMatch = q.match(/\b(?:last|past|previous)\s+(\d+)\s+days?\b/);
   if (daysMatch) return rel(parseInt(daysMatch[1], 10));
 
-  // "N weeks/months ago"
   const agoMatch = q.match(/(\d+)\s+(weeks?|months?|days?)\s+ago/);
   if (agoMatch) {
     const n = parseInt(agoMatch[1], 10);
@@ -86,13 +74,11 @@ export function timeWindowFromQuery(query: string): { dateFrom?: number; dateTo?
   const agoWeeks = q.match(/\b(?:a|one)\s+week\s+ago\b/);
   if (agoWeeks) return { dateFrom: todayMs - 8 * DAY, dateTo: todayMs - 6 * DAY };
 
-  // Month names: "in June", "around March", "saved June"
   for (let i = 0; i < MONTHS.length; i++) {
     if (new RegExp(`\\b${MONTHS[i]}\\b`).test(q)) {
       const year = new Date().getFullYear();
       const monthStart = new Date(year, i, 1).getTime();
       const monthEnd = new Date(year, i + 1, 1).getTime();
-      // If the month already passed this year, assume last year.
       if (monthEnd < todayMs) {
         return {
           dateFrom: new Date(year - 1, i, 1).getTime(),
@@ -106,14 +92,7 @@ export function timeWindowFromQuery(query: string): { dateFrom?: number; dateTo?
   return null;
 }
 
-function tokenize(q: string): string[] {
-  return q
-    .toLowerCase()
-    .split(/[^a-z0-9€$£¥à-ÿ]+/)
-    .filter(Boolean);
-}
-
-function keywordScore(drop: Doc<"drops">, tokens: string[]): { score: number; matched: string[] } {
+function keywordScore(drop: Drop, tokens: string[]): { score: number; matched: string[] } {
   const fields: Array<[string, number]> = [
     [drop.title ?? "", 4],
     [drop.keywords?.join(" ") ?? "", 3],
@@ -147,35 +126,7 @@ function keywordScore(drop: Doc<"drops">, tokens: string[]): { score: number; ma
   return { score, matched: [...new Set(matched)] };
 }
 
-function cosine(a: number[], b: number[]): number {
-  let dot = 0;
-  let ma = 0;
-  let mb = 0;
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    dot += a[i] * b[i];
-    ma += a[i] * a[i];
-    mb += b[i] * b[i];
-  }
-  if (ma === 0 || mb === 0) return 0;
-  return dot / (Math.sqrt(ma) * Math.sqrt(mb));
-}
-
-function passesFilters(
-  drop: Doc<"drops">,
-  f: {
-    category?: string;
-    kind?: string;
-    source?: string;
-    place?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    dateFrom?: number;
-    dateTo?: number;
-    tag?: string;
-    starred?: boolean;
-  },
-): boolean {
+function passesFilters(drop: Drop, f: SearchFilters): boolean {
   if (f.category && drop.category !== f.category) return false;
   if (f.kind && drop.kind !== f.kind) return false;
   if (f.source && drop.source !== f.source) return false;
@@ -196,22 +147,13 @@ function passesFilters(
   return true;
 }
 
-export interface SearchHit {
-  drop: Doc<"drops">;
-  score: number;
-  matched: string[];
-  semantic: boolean;
-}
-
-export const searchDrops = action({
-  args: { query: v.string(), filters: v.optional(SEARCH_FILTERS) },
-  handler: async (ctx, { query, filters }): Promise<{ results: SearchHit[]; count: number }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    const userId = identity?.subject as Id<"users"> | undefined;
-    if (!userId) return { results: [], count: 0 };
-
+export const searchService = {
+  async searchDrops(
+    userId: string,
+    query: string,
+    filters?: SearchFilters,
+  ): Promise<{ results: SearchHit[]; count: number }> {
     const f = filters ?? {};
-    // Natural time language → date window (user filters win).
     const timeWindow = timeWindowFromQuery(query);
     if (timeWindow) {
       f.dateFrom = f.dateFrom ?? timeWindow.dateFrom;
@@ -219,41 +161,27 @@ export const searchDrops = action({
     }
     const limit = Math.min(f.limit ?? 30, 50);
 
-    let drops = await ctx.runQuery(internal.internal_ops.getDropsByUser, { userId });
-    drops = drops.filter((d) => !d.deletedAt);
-    drops = drops.filter((d) => (f.includeArchived ? true : !d.archived));
-
-    // Collection filter.
+    let drops: Drop[];
     if (f.collectionId) {
-      const ids = await ctx.runQuery(internal.internal_ops.getCollectionDropIds, {
-        collectionId: f.collectionId,
-      });
-      const idSet = new Set(ids.map((i) => i.toString()));
-      drops = drops.filter((d) => idSet.has(d._id.toString()));
+      drops = await dropService.byCollection(userId, f.collectionId);
+    } else {
+      drops = await dropService.listAll(userId, f.includeArchived);
     }
+    drops = drops.filter((d) => !d.deletedAt);
 
     const tokens = tokenize(query);
-    const provider = await resolveProvider();
-    let queryVec: number[] | null = null;
-    if (tokens.length) {
-      try {
-        queryVec = await provider.embed(query);
-      } catch {
-        queryVec = null;
-      }
-    }
+    const queryVec = tokens.length ? dropEmbedText(query) : null;
 
     const scored = drops.map((drop) => {
       const { score: kwScore, matched } = keywordScore(drop, tokens);
       const kwNorm = tokens.length ? Math.min(1, kwScore / 14) : 0;
       let sem = 0;
       let hasSem = false;
-      if (tokens.length && queryVec && drop.embedding && drop.embeddingProvider === provider.id) {
-        sem = cosine(queryVec, drop.embedding);
+      if (tokens.length && queryVec && drop.embedding && drop.embeddingProvider === EMBEDDING_PROVIDER) {
+        sem = cosineSimilarity(queryVec, drop.embedding);
         hasSem = sem > 0;
       }
       let combined = hasSem ? 0.55 * sem + 0.45 * kwNorm : kwNorm;
-      // Favorites nudge genuinely-close results (never bury relevance).
       if (drop.starred) combined = Math.min(1, combined + 0.04);
       return { drop, score: combined, kwScore, sem, hasSem, matched };
     });
@@ -274,80 +202,45 @@ export const searchDrops = action({
       semantic: s.hasSem,
     }));
 
-    // Record search history (respects the user's privacy setting).
     if (query.trim()) {
-      const user = await ctx.runQuery(internal.internal_ops.getUserDoc, { userId });
-      const enabled = user?.searchHistoryEnabled !== false;
-      if (enabled) {
-        try {
-          await ctx.runMutation(internal.searchHistory.record, {
-            query: query.trim(),
-            resultCount: results.length,
-          });
-        } catch {
-          // non-fatal
-        }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("search_history_enabled")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profile?.search_history_enabled !== false) {
+        await this.recordSearch(userId, query.trim(), results.length);
       }
     }
 
     return { results, count: filtered.length };
   },
-});
 
-const ASK_HISTORY = v.array(
-  v.object({ role: v.union(v.literal("user"), v.literal("assistant")), content: v.string() }),
-);
-
-export const askDrop = action({
-  args: {
-    query: v.string(),
-    history: v.optional(ASK_HISTORY),
-    dropId: v.optional(v.id("drops")),
-    collectionId: v.optional(v.id("collections")),
-  },
-  handler: async (
-    ctx,
-    { query, history, dropId, collectionId },
-  ): Promise<{
-    answer: string | null;
-    sources: Array<{
-      id: Id<"drops">;
-      title: string;
-      summary?: string;
-      category?: string;
-      savedAt?: number;
-      facts?: string;
-    }>;
-  }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    const userId = identity?.subject as Id<"users"> | undefined;
-    if (!userId) return { answer: null, sources: [] };
-
-    let drops = await ctx.runQuery(internal.internal_ops.getDropsByUser, { userId });
+  /** Ask DROP — retrieve the user's relevant Drops, then synthesize with the
+   *  local engine. Answers are always grounded in saved content. */
+  async askDrop(
+    userId: string,
+    params: {
+      query: string;
+      history?: Array<{ role: "user" | "assistant"; content: string }>;
+      dropId?: string;
+      collectionId?: string;
+    },
+  ): Promise<AskResult> {
+    let drops = await dropService.listAll(userId);
     drops = drops.filter((d) => !d.deletedAt && !d.archived);
 
-    // Scope: single Drop (Ask about this Drop) or a Collection.
-    if (dropId) {
-      const target = drops.find((d) => d._id === dropId);
+    if (params.dropId) {
+      const target = drops.find((d) => d.id === params.dropId);
       if (!target) return { answer: null, sources: [] };
-      const related = drops
-        .filter((d) => d._id !== dropId && d.category === target.category)
-        .slice(0, 6);
+      const related = drops.filter((d) => d.id !== params.dropId && d.category === target.category).slice(0, 6);
       drops = [target, ...related];
-    } else if (collectionId) {
-      const ids = await ctx.runQuery(internal.internal_ops.getCollectionDropIds, { collectionId });
-      const idSet = new Set(ids.map((i) => i.toString()));
-      drops = drops.filter((d) => idSet.has(d._id.toString()));
+    } else if (params.collectionId) {
+      drops = await dropService.byCollection(userId, params.collectionId);
     }
 
-    const tokens = tokenize(query);
-    const provider = await resolveProvider();
-    let queryVec: number[] | null = null;
-    try {
-      queryVec = await provider.embed(query);
-    } catch {
-      queryVec = null;
-    }
+    const tokens = tokenize(params.query);
+    const queryVec = dropEmbedText(params.query);
 
     const scored = drops
       .map((drop) => {
@@ -355,18 +248,18 @@ export const askDrop = action({
         const kwNorm = Math.min(1, kwScore / 14);
         let sem = 0;
         let hasSem = false;
-        if (queryVec && drop.embedding && drop.embeddingProvider === provider.id) {
-          sem = cosine(queryVec, drop.embedding);
+        if (queryVec && drop.embedding && drop.embeddingProvider === EMBEDDING_PROVIDER) {
+          sem = cosineSimilarity(queryVec, drop.embedding);
           hasSem = sem > 0.15;
         }
         const base = hasSem ? 0.55 * sem + 0.45 * kwNorm : kwNorm;
-        return { drop, score: dropId ? 0.6 + base : base };
+        return { drop, score: params.dropId ? 0.6 + base : base };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, 8);
 
-    const sources = scored.map((s) => ({
-      id: s.drop._id,
+    const sources: AskSource[] = scored.map((s) => ({
+      id: s.drop.id,
       title: s.drop.title,
       summary: s.drop.summary,
       category: s.drop.category,
@@ -375,33 +268,58 @@ export const askDrop = action({
     }));
 
     let answer: string | null = null;
-    if (provider.synthesize && sources.length) {
+    if (sources.length) {
+      const { getDropAI } = await import("@/lib/drop-ai");
+      const engine = await getDropAI();
       try {
-        answer = await synthesizeWithHistory(provider, query, sources, history);
-      } catch (e) {
-        console.warn("Synthesis failed, falling back to results:", e);
+        const turns = (params.history ?? []).slice(-4);
+        const withContext = turns.length
+          ? `(Conversation so far:\n${turns.map((t) => `${t.role}: ${t.content}`).join("\n")}\n)\n\n${params.query}`
+          : params.query;
+        const context = sources
+          .map((s) => `- ${s.title}${s.summary ? ` — ${s.summary}` : ""}${s.facts ? ` (${s.facts})` : ""}`)
+          .join("\n");
+        const prompt = `Answer the question using ONLY the saved content below. If the content doesn't contain the answer, say so. Be concise.\n\nSaved content:\n${context}\n\nQuestion: ${withContext}`;
+        answer = await engine.generateText(prompt);
+      } catch {
+        answer = null;
       }
     }
 
     return { answer, sources };
   },
-});
 
-async function synthesizeWithHistory(
-  provider: { synthesize?: (q: string, sources: Array<{ id: Id<"drops">; title: string; summary?: string; category?: string; savedAt?: number; facts?: string }>) => Promise<string | null> },
-  query: string,
-  sources: Array<{ id: Id<"drops">; title: string; summary?: string; category?: string; savedAt?: number; facts?: string }>,
-  history?: Array<{ role: "user" | "assistant"; content: string }>,
-): Promise<string | null> {
-  if (!provider.synthesize) return null;
-  const turns = (history ?? []).slice(-4);
-  const withContext = turns.length
-    ? `(Conversation so far:\n${turns.map((t) => `${t.role}: ${t.content}`).join("\n")}\n)\n\n${query}`
-    : query;
-  return provider.synthesize(withContext, sources);
-}
+  // -------------------------------------------------------------------------
+  // Search history
+  // -------------------------------------------------------------------------
 
-function buildFactString(drop: Doc<"drops">): string | undefined {
+  async listSearchHistory(userId: string, limit = 20): Promise<SearchHistory[]> {
+    const { data, error } = await supabase
+      .from("search_history")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []).map(rowToSearchHistory);
+  },
+
+  async recordSearch(userId: string, query: string, resultCount?: number): Promise<void> {
+    const { error } = await supabase
+      .from("search_history")
+      .insert({ user_id: userId, query, result_count: resultCount });
+    if (error && !error.message.includes("duplicate")) {
+      // non-fatal for search UX
+    }
+  },
+
+  async clearSearchHistory(userId: string): Promise<void> {
+    const { error } = await supabase.from("search_history").delete().eq("user_id", userId);
+    if (error) throw error;
+  },
+};
+
+function buildFactString(drop: Drop): string | undefined {
   const bits: string[] = [];
   if (drop.product?.price !== undefined) {
     bits.push(

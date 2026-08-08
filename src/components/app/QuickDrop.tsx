@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation } from "convex/react";
+import { dropService, storageService } from "@/lib/services";
 import { ImagePlus, Link2, Loader2, Sparkles, StickyNote } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -22,9 +21,8 @@ export function QuickDrop({ open, onOpenChange }: { open: boolean; onOpenChange:
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
-  const generateUploadUrl = useMutation(api.drops.generateUploadUrl);
-  const create = useMutation(api.drops.create);
+  const { isAuthenticated, user } = useAuth();
+  const userId = user?.id;
 
   const reset = () => {
     setText("");
@@ -64,19 +62,23 @@ export function QuickDrop({ open, onOpenChange }: { open: boolean; onOpenChange:
   }, [open]);
 
   const upload = async (file: File) => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !userId) return;
     setBusy(true);
     try {
-      const storageUrl = await generateUploadUrl();
-      const res = await fetch(storageUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
+      const path = await storageService.uploadFile({
+        userId,
+        dropId: "pending",
+        file,
+        fileName: file.name || "capture.bin",
+        contentType: file.type || "application/octet-stream",
       });
-      if (!res.ok) throw new Error("Upload failed");
-      const storageId = storageUrl.split("/").pop() ?? "";
       const kind = file.type.startsWith("image/") ? "screenshot" : "document";
-      const result = await create({ kind, storageId, contentType: file.type, fileName: file.name });
+      const result = await dropService.create(userId, {
+        kind,
+        storagePath: path,
+        contentType: file.type,
+        fileName: file.name,
+      });
       toast("Dropped ✓", { description: "Saved instantly — DROP is understanding it…" });
       onOpenChange(false);
       navigate(`/app/drop/${result.dropId}`);
@@ -89,16 +91,16 @@ export function QuickDrop({ open, onOpenChange }: { open: boolean; onOpenChange:
 
   const save = async () => {
     const t = text.trim();
-    if (!t || busy) return;
+    if (!t || busy || !userId) return;
     setBusy(true);
     try {
       if (/^https?:\/\/\S+$/i.test(t)) {
-        const result = await create({ kind: "link", url: t });
+        const result = await dropService.create(userId, { kind: "link", url: t });
         toast("Dropped ✓");
         onOpenChange(false);
         navigate(`/app/drop/${result.dropId}`);
       } else {
-        const result = await create({ kind: "note", text: t });
+        const result = await dropService.create(userId, { kind: "note", text: t });
         toast("Dropped ✓");
         onOpenChange(false);
         navigate(`/app/drop/${result.dropId}`);

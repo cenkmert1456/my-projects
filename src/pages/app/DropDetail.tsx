@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { DropCard } from "@/components/drops/DropCard";
 import { DropStatusBadge } from "@/components/drops/DropStatusBadge";
 import { Button } from "@/components/ui/button";
@@ -16,15 +15,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { useStorageUrl } from "@/hooks/use-storage-url";
+import { collectionService, dropService, reminderService, searchService, stackService } from "@/lib/services";
 import {
   Archive,
   ArchiveRestore,
@@ -35,7 +30,6 @@ import {
   Copy,
   Eye,
   ExternalLink,
-  FileText,
   FolderPlus,
   Loader2,
   Lock,
@@ -52,48 +46,52 @@ import {
   Tag,
   Trash2,
   TrendingDown,
-  Undo2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { CATEGORIES } from "@/convex/lib/constants";
 import { CATEGORY_META, ENTITY_LABELS, KIND_META, SOURCE_META } from "@/lib/drop-meta";
-import { formatDate, formatDateTime, formatPrice, hostOf } from "@/lib/format";
+import { formatDate, formatDateTime, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { haptic, requestNotificationPermission, scheduleLocalNotification, cancelLocalNotification } from "@/lib/mobile/native";
+
+/** Derive a stable 32-bit notification id from any string id. */
+function notifId(raw: string): number {
+  const hex = raw.replace(/[^0-9a-f]/gi, "").slice(-8).padStart(8, "0") || "1";
+  return Math.abs(Number(BigInt.asIntN(32, BigInt("0x" + hex)))) || 1;
+}
 
 export default function DropDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const data = useQuery(api.drops.get, { id: id as never });
-  const storageUrl = useQuery(api.drops.getStorageUrl, data?.drop.storageId ? { storageId: data.drop.storageId } : "skip");
-  const collections = useQuery(api.collections.list);
-  const dropCollections = useQuery(api.collections.withDrop, { dropId: id as never });
-  const reminders = useQuery(api.reminders.listForDrop, { dropId: id as never });
-  const stacks = useQuery(api.stacks.list);
-  const dropStacks = useQuery(api.stacks.forDrop, { dropId: id as never });
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
 
-  const update = useMutation(api.drops.update);
-  const toggleStar = useMutation(api.drops.toggleStar);
-  const toggleArchive = useMutation(api.drops.toggleArchive);
-  const togglePin = useMutation(api.drops.togglePin);
-  const toggleSensitive = useMutation(api.drops.toggleSensitive);
-  const setNotes = useMutation(api.drops.setNotes);
-  const softRemove = useMutation(api.drops.softRemove);
-  const restore = useMutation(api.drops.restore);
-  const addTag = useMutation(api.drops.addTag);
-  const removeTag = useMutation(api.drops.removeTag);
-  const retryAnalysis = useMutation(api.drops.retryAnalysis);
-  const createReminder = useMutation(api.reminders.create);
-  const completeReminder = useMutation(api.reminders.complete);
-  const addToCollection = useMutation(api.collections.addDrop);
-  const removeFromCollection = useMutation(api.collections.removeDrop);
-  const createCollection = useMutation(api.collections.create);
-  const addToStack = useMutation(api.stacks.addDrop);
-  const removeFromStack = useMutation(api.stacks.removeDrop);
-  const createStack = useMutation(api.stacks.create);
-  const askDrop = useAction(api.search.askDrop);
+  const { data, loading } = useRealtimeQuery(
+    () => dropService.get(uid as string, id as string),
+    { table: "drops", userId: uid, rowId: id },
+  );
+  const storageUrl = useStorageUrl(data?.drop.storagePath ?? null);
+  const { data: collections } = useRealtimeQuery(
+    () => collectionService.list(uid as string),
+    { table: "collections", userId: uid },
+  );
+  const { data: dropCollections } = useRealtimeQuery(
+    () => collectionService.withDrop(uid as string, id as string),
+    { table: "collection_drops", userId: uid },
+  );
+  const { data: reminders } = useRealtimeQuery(
+    () => reminderService.listForDrop(uid as string, id as string),
+    { table: "reminders", userId: uid },
+  );
+  const { data: stacks } = useRealtimeQuery(
+    () => stackService.list(uid as string),
+    { table: "stacks", userId: uid },
+  );
+  const { data: dropStacks } = useRealtimeQuery(
+    () => stackService.forDrop(uid as string, id as string),
+    { table: "stack_drops", userId: uid },
+  );
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -124,7 +122,7 @@ export default function DropDetail() {
     return groups;
   }, [drop]);
 
-  if (!data || !drop) {
+  if (loading || !data || !drop) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -137,12 +135,9 @@ export default function DropDetail() {
   const related = data.related ?? [];
 
   const handleSaveEdit = async () => {
-    await update({
-      id: drop._id,
-      patch: {
-        title: editTitle.trim() || drop.title,
-        summary: editSummary.trim() || undefined,
-      },
+    await dropService.update(uid as string, drop._id, {
+      title: editTitle.trim() || drop.title,
+      summary: editSummary.trim() || undefined,
     });
     setEditing(false);
     haptic("success");
@@ -152,14 +147,13 @@ export default function DropDetail() {
   /** Create a reminder AND schedule a local notification (with permission
    *  requested contextually the first time a reminder is created). */
   const handleCreateReminder = async (t: string, at: number) => {
-    const result = await createReminder({ dropId: drop._id, text: t, remindAt: at });
+    const result = await reminderService.create(uid as string, { dropId: drop._id, text: t, remindAt: at });
     haptic("success");
     if (result) {
       const granted = await requestNotificationPermission();
       if (granted) {
-        const nid = Number(BigInt.asIntN(32, BigInt("0x" + String(result).replace(/[^0-9a-f]/gi, "").slice(-8).padStart(8, "0") || "1")));
         await scheduleLocalNotification({
-          id: Math.abs(nid) || 1,
+          id: notifId(result.id),
           title: "DROP reminder",
           body: t,
           at,
@@ -171,29 +165,29 @@ export default function DropDetail() {
   };
 
   const handleCompleteReminder = async (r: { _id: string }) => {
-    await completeReminder({ id: r._id as never });
-    cancelLocalNotification(Number(BigInt.asIntN(32, BigInt("0x" + String(r._id).replace(/[^0-9a-f]/gi, "").slice(-8).padStart(8, "0") || "1"))));
+    await reminderService.complete(uid as string, r._id);
+    cancelLocalNotification(notifId(r._id));
     haptic("light");
   };
 
   const handleTrash = async () => {
-    await softRemove({ id: drop._id });
+    await dropService.softRemove(uid as string, drop._id);
     toast("Moved to Trash", {
       description: "You can restore it within 30 days.",
       action: {
         label: "Undo",
-        onClick: () => void restore({ id: drop._id }),
+        onClick: () => void dropService.restore(uid as string, drop._id),
       },
     });
     navigate("/app");
   };
 
   const handleAsk = async () => {
-    if (!askQuery.trim() || asking) return;
+    if (!askQuery.trim() || asking || !uid) return;
     setAsking(true);
     setAskAnswer(null);
     try {
-      const res = await askDrop({ query: askQuery.trim(), dropId: drop._id as never });
+      const res = await searchService.askDrop(uid, { query: askQuery.trim(), dropId: drop._id });
       setAskAnswer(res.answer ?? "I couldn't find an answer in this Drop alone — ask me a more specific question about it.");
     } catch {
       setAskAnswer("Sorry — I couldn't analyze this right now. Try again in a moment.");
@@ -205,6 +199,8 @@ export default function DropDetail() {
   const mapsUrl = drop.place
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([drop.place.name, drop.place.city, drop.place.country].filter(Boolean).join(", "))}`
     : null;
+
+  const filePath = drop.storageId ?? drop.storagePath;
 
   return (
     <div className="space-y-6">
@@ -218,7 +214,7 @@ export default function DropDetail() {
 
       {/* Hero */}
       <div className="overflow-hidden rounded-3xl border border-border/80 bg-card">
-        {drop.storageId ? (
+        {filePath ? (
           <div className="relative aspect-video w-full bg-muted sm:aspect-[21/9]">
             {storageUrl && (
               <img src={storageUrl} alt={drop.title} className="h-full w-full object-cover" />
@@ -328,22 +324,22 @@ export default function DropDetail() {
               size="sm"
               className={cn("gap-1.5 rounded-xl", drop.starred && "border-amber-500/40 text-amber-600 dark:text-amber-300")}
               onClick={() => {
-                void toggleStar({ id: drop._id });
+                void dropService.toggleStar(uid as string, drop._id);
                 haptic(drop.starred ? "light" : "success");
               }}
             >
               <Star className={cn("h-4 w-4", drop.starred && "fill-amber-400 text-amber-400")} />
               {drop.starred ? "Favorited" : "Favorite"}
             </Button>
-            <Button variant="outline" size="sm" className={cn("gap-1.5 rounded-xl", drop.pinned && "border-primary/40 text-primary")} onClick={() => void togglePin({ id: drop._id })}>
+            <Button variant="outline" size="sm" className={cn("gap-1.5 rounded-xl", drop.pinned && "border-primary/40 text-primary")} onClick={() => void dropService.togglePin(uid as string, drop._id)}>
               {drop.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
               {drop.pinned ? "Unpin" : "Pin"}
             </Button>
-            <Button variant="outline" size="sm" className={cn("gap-1.5 rounded-xl", drop.sensitive && "border-rose-500/40 text-rose-500")} onClick={() => void toggleSensitive({ id: drop._id })}>
+            <Button variant="outline" size="sm" className={cn("gap-1.5 rounded-xl", drop.sensitive && "border-rose-500/40 text-rose-500")} onClick={() => void dropService.toggleSensitive(uid as string, drop._id)}>
               <ShieldAlert className="h-4 w-4" />
               {drop.sensitive ? "Not sensitive" : "Sensitive"}
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => void toggleArchive({ id: drop._id })}>
+            <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => void dropService.toggleArchive(uid as string, drop._id)}>
               {drop.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
               {drop.archived ? "Unarchive" : "Archive"}
             </Button>
@@ -457,7 +453,7 @@ export default function DropDetail() {
               <Button
                 size="sm"
                 onClick={async () => {
-                  await setNotes({ id: drop._id, notes: notesDraft });
+                  await dropService.setNotes(uid as string, drop._id, notesDraft);
                   setNotesDraft(null);
                   toast("Note saved");
                 }}
@@ -593,7 +589,7 @@ export default function DropDetail() {
           {drop.tags.map((t) => (
             <span key={t} className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold">
               #{t}
-              <button type="button" aria-label={`Remove ${t}`} onClick={() => void removeTag({ id: drop._id, tag: t })} className="cursor-pointer text-muted-foreground hover:text-destructive">
+              <button type="button" aria-label={`Remove ${t}`} onClick={() => void dropService.removeTag(uid as string, drop._id, t)} className="cursor-pointer text-muted-foreground hover:text-destructive">
                 ×
               </button>
             </span>
@@ -603,7 +599,7 @@ export default function DropDetail() {
             onSubmit={(e) => {
               e.preventDefault();
               if (newTag.trim()) {
-                void addTag({ id: drop._id, tag: newTag.trim() });
+                void dropService.addTag(uid as string, drop._id, newTag.trim());
                 setNewTag("");
               }
             }}
@@ -662,7 +658,7 @@ export default function DropDetail() {
             <button
               key={c._id}
               type="button"
-              onClick={() => void removeFromCollection({ collectionId: c._id, dropId: drop._id })}
+              onClick={() => void collectionService.removeDrop(uid as string, c._id, drop._id)}
               className="cursor-pointer rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
             >
               {c.emoji ?? "📁"} {c.name} ✕
@@ -680,7 +676,7 @@ export default function DropDetail() {
                   <button
                     key={c._id}
                     type="button"
-                    onClick={() => void addToCollection({ collectionId: c._id, dropId: drop._id })}
+                    onClick={() => void collectionService.addDrop(uid as string, c._id, drop._id)}
                     className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
                   >
                     <span>{c.emoji ?? "📁"}</span>
@@ -693,8 +689,8 @@ export default function DropDetail() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!newCollectionName.trim()) return;
-                    const id = await createCollection({ name: newCollectionName.trim() });
-                    await addToCollection({ collectionId: id as never, dropId: drop._id });
+                    const created = await collectionService.create(uid as string, { name: newCollectionName.trim() });
+                    await collectionService.addDrop(uid as string, created.id, drop._id);
                     setNewCollectionName("");
                     toast("Collection created");
                   }}
@@ -724,7 +720,7 @@ export default function DropDetail() {
             <button
               key={s._id}
               type="button"
-              onClick={() => void removeFromStack({ stackId: s._id, dropId: drop._id })}
+              onClick={() => void stackService.removeDrop(uid as string, s._id, drop._id)}
               className="cursor-pointer rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
             >
               {s.emoji ?? "🗂️"} {s.name} ✕
@@ -742,7 +738,7 @@ export default function DropDetail() {
                   <button
                     key={s.stack._id}
                     type="button"
-                    onClick={() => void addToStack({ stackId: s.stack._id, dropId: drop._id })}
+                    onClick={() => void stackService.addDrop(uid as string, s.stack._id, drop._id)}
                     className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
                   >
                     <span>{s.stack.emoji ?? "🗂️"}</span>
@@ -756,8 +752,8 @@ export default function DropDetail() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!newStackName.trim()) return;
-                    const id = await createStack({ name: newStackName.trim() });
-                    await addToStack({ stackId: id as never, dropId: drop._id });
+                    const created = await stackService.create(uid as string, { name: newStackName.trim() });
+                    await stackService.addDrop(uid as string, created.id, drop._id);
                     setNewStackName("");
                     toast("Stack created");
                   }}
@@ -783,7 +779,7 @@ export default function DropDetail() {
             variant="outline"
             className="gap-2"
             onClick={() => {
-              void retryAnalysis({ id: drop._id });
+              void dropService.retryAnalysis(uid as string, drop._id);
               toast("Re-analyzing your Drop…");
             }}
           >
@@ -796,7 +792,7 @@ export default function DropDetail() {
             size="sm"
             className="gap-2 text-muted-foreground"
             onClick={() => {
-              void retryAnalysis({ id: drop._id });
+              void dropService.retryAnalysis(uid as string, drop._id);
               toast("Re-analyzing with AI… your edits are kept.");
             }}
           >

@@ -1,26 +1,32 @@
-import { api } from "@/convex/_generated/api";
 import { DropCard } from "@/components/drops/DropCard";
 import { Button } from "@/components/ui/button";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService } from "@/lib/services";
+import type { Drop } from "@/lib/supabase/database.types";
 import { CircleAlert, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 export default function Inbox() {
-  const allDrops = useQuery(api.drops.listAll, { includeArchived: true });
-  const retryAnalysis = useMutation(api.drops.retryAnalysis);
+  const { user } = useAuth();
+  const userId = user?.id;
+  const allDropsQuery = useRealtimeQuery(
+    () => (userId ? dropService.listAll(userId, true) : Promise.resolve([] as Drop[])),
+    { table: "drops", userId },
+  );
+  const allDrops = allDropsQuery.data ?? [];
   const navigate = useNavigate();
 
   const { processing, review, ready, failed } = useMemo(() => {
-    type DropGroup = NonNullable<typeof allDrops>;
-    const groups: Record<"processing" | "review" | "ready" | "failed", DropGroup> = {
+    const groups: Record<"processing" | "review" | "ready" | "failed", Drop[]> = {
       processing: [],
       review: [],
       ready: [],
       failed: [],
     };
-    for (const d of allDrops ?? []) {
+    for (const d of allDrops) {
       if (d.status === "processing") groups.processing.push(d);
       else if (d.status === "needs_review") groups.review.push(d);
       else if (d.status === "failed") groups.failed.push(d);
@@ -29,7 +35,7 @@ export default function Inbox() {
     return groups;
   }, [allDrops]);
 
-  if (!allDrops) {
+  if (allDropsQuery.loading && !allDrops.length) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -92,7 +98,7 @@ export default function Inbox() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    void retryAnalysis({ id: drop._id });
+                    if (userId) void dropService.retryAnalysis(userId, drop._id);
                     toast("Re-analyzing…");
                   }}
                 >

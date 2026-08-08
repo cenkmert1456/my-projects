@@ -37,8 +37,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useMobileApp } from "@/hooks/use-mobile-app";
 import { haptic, isNative } from "@/lib/mobile/native";
 import { appLockEnabled } from "@/lib/mobile/app-lock";
-import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
+import { dropService, storageService } from "@/lib/services";
 import { toast } from "sonner";
 
 const NAV = [
@@ -85,8 +84,6 @@ export default function AppShell() {
   const { user, isAuthenticated, signOut } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const generateUploadUrl = useMutation(api.drops.generateUploadUrl);
-  const create = useMutation(api.drops.create);
 
   const { online, locked, setLocked, requestUnlock } = useMobileApp();
 
@@ -190,16 +187,24 @@ export default function AppShell() {
       if (!files.length || !user) return;
       try {
         for (const file of files) {
-          const storageUrl = await generateUploadUrl();
-          const res = await fetch(storageUrl, {
-            method: "PUT",
-            headers: { "Content-Type": file.type || "application/octet-stream" },
-            body: file,
+          const path = await storageService.uploadFile({
+            userId: user.id,
+            dropId: "pending",
+            file,
+            fileName: file.name || "capture.bin",
+            contentType: file.type || "application/octet-stream",
           });
-          if (!res.ok) throw new Error("Upload failed");
-          const storageId = storageUrl.split("/").pop() ?? "";
-          const kind = /pdf|word|text/i.test(file.type) ? "document" : file.type.startsWith("image/") ? "image" : "document";
-          const result = await create({ kind, storageId, contentType: file.type, fileName: file.name });
+          const kind = /pdf|word|text/i.test(file.type)
+            ? "document"
+            : file.type.startsWith("image/")
+              ? "image"
+              : "document";
+          const result = await dropService.create(user.id, {
+            kind,
+            storagePath: path,
+            contentType: file.type,
+            fileName: file.name,
+          });
           if (result.duplicate) {
             toast("You already saved this", { description: `“${result.title ?? "item"}” is already in your memory.` });
           }
@@ -222,7 +227,7 @@ export default function AppShell() {
       window.removeEventListener("dragleave", onLeave);
       window.removeEventListener("drop", onDrop);
     };
-  }, [user, generateUploadUrl, create]);
+  }, [user]);
 
   return (
     <AddDropContext.Provider value={{ open: openAdd, openWithKind: openAddWithKind, openWithShare: (p) => { setSharePayload(p); if (isMobile || isNative()) setMobileCaptureOpen(true); } }}>

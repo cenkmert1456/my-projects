@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { DropCard } from "@/components/drops/DropCard";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,28 +8,34 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService, stackService } from "@/lib/services";
+import type { Drop } from "@/lib/supabase/database.types";
 import { ArrowLeft, Check, Loader2, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { cn } from "@/lib/utils";
 
 export default function StackDetail() {
-  const { id } = useParams();
-  const stackId = id as Id<"stacks">;
-  const data = useQuery(api.stacks.get, { id: stackId });
-  const allDrops = useQuery(api.drops.listAll, {});
-  const addDrop = useMutation(api.stacks.addDrop);
-  const removeDrop = useMutation(api.stacks.removeDrop);
+  const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data, loading } = useRealtimeQuery(
+    () => stackService.get(uid as string, id as string),
+    { table: "stack_drops", userId: uid },
+  );
+  const { data: allDrops } = useRealtimeQuery(
+    () => dropService.listAll(uid as string),
+    { table: "drops", userId: uid },
+  );
   const navigate = useNavigate();
   const [addOpen, setAddOpen] = useState(false);
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const members = useMemo(
-    () => new Set((data?.drops ?? []).map((d) => d._id.toString())),
+    () => new Set((data?.drops ?? []).map((d) => d._id)),
     [data],
   );
 
@@ -38,7 +43,7 @@ export default function StackDetail() {
     if (!allDrops) return [];
     const needle = q.trim().toLowerCase();
     return allDrops
-      .filter((d) => !members.has(d._id.toString()))
+      .filter((d) => !members.has(d._id))
       .filter(
         (d) =>
           !needle ||
@@ -49,10 +54,10 @@ export default function StackDetail() {
       .slice(0, 40);
   }, [allDrops, members, q]);
 
-  const addOne = async (dropId: Id<"drops">) => {
-    setBusyId(dropId.toString());
+  const addOne = async (dropId: string) => {
+    setBusyId(dropId);
     try {
-      await addDrop({ stackId, dropId });
+      await stackService.addDrop(uid as string, id as string, dropId);
       toast("Added to stack");
     } catch {
       toast("Couldn't add that drop");
@@ -61,7 +66,7 @@ export default function StackDetail() {
     }
   };
 
-  if (!data) {
+  if (loading || !data) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -113,14 +118,14 @@ export default function StackDetail() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {drops.map((drop: Doc<"drops">, i) => (
+          {drops.map((drop: Drop, i) => (
             <div key={drop._id} className="group relative">
               <DropCard drop={drop} index={i} />
               <button
                 type="button"
                 aria-label="Remove from stack"
                 onClick={async () => {
-                  await removeDrop({ stackId, dropId: drop._id });
+                  await stackService.removeDrop(uid as string, id as string, drop._id);
                 }}
                 className="absolute right-2 top-2 z-10 rounded-full border border-border/70 bg-background/90 p-1.5 text-muted-foreground opacity-0 shadow-sm backdrop-blur transition-opacity hover:text-destructive group-hover:opacity-100"
               >
@@ -175,7 +180,7 @@ export default function StackDetail() {
                     <span className="block truncate text-sm font-semibold">{d.title}</span>
                     <span className="block text-xs text-muted-foreground">{d.category}</span>
                   </span>
-                  {busyId === d._id.toString() ? (
+                  {busyId === d._id ? (
                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   ) : (
                     <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />

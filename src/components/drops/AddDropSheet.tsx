@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,7 +9,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation, useQuery } from "convex/react";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService, profileService, stackService, storageService } from "@/lib/services";
 import {
   Camera,
   FileUp,
@@ -65,11 +65,13 @@ export function AddDropSheet({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const generateUploadUrl = useMutation(api.drops.generateUploadUrl);
-  const create = useMutation(api.drops.create);
-  const createStack = useMutation(api.stacks.create);
-  const { isAuthenticated } = useAuth();
-  const plan = useQuery(api.profile.planInfo);
+  const { isAuthenticated, user } = useAuth();
+  const userId = user?.id;
+  const planQuery = useRealtimeQuery(
+    () => (userId ? profileService.planInfo(userId) : Promise.resolve(null)),
+    { table: "drops", userId },
+  );
+  const plan = planQuery.data;
 
   useEffect(() => {
     if (open) {
@@ -147,18 +149,17 @@ export function AddDropSheet({
   }, [open]);
 
   const uploadOne = async (file: File, fileKind: DropKindOption) => {
-    if (!isAuthenticated) return null;
-    const storageUrl = await generateUploadUrl();
-    const res = await fetch(storageUrl, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
+    if (!isAuthenticated || !userId) return null;
+    const path = await storageService.uploadFile({
+      userId,
+      dropId: "pending",
+      file,
+      fileName: file.name || "capture.bin",
+      contentType: file.type || "application/octet-stream",
     });
-    if (!res.ok) throw new Error("Upload failed — please try again.");
-    const storageId = storageUrl.split("/").pop() ?? "";
-    return create({
+    return dropService.create(userId, {
       kind: fileKind,
-      storageId,
+      storagePath: path,
       contentType: file.type,
       fileName: file.name,
     });
@@ -191,9 +192,9 @@ export function AddDropSheet({
       }
 
       // Optional: group a multi-item capture into a Stack.
-      if (groupTogether && ids.length > 1) {
+      if (groupTogether && ids.length > 1 && userId) {
         try {
-          await createStack({ name: "New stack", dropIds: ids as never });
+          await stackService.create(userId, { name: "New stack", dropIds: ids });
         } catch {
           // grouping is optional
         }
@@ -239,7 +240,12 @@ export function AddDropSheet({
     setUploading(true);
     setMode("uploading");
     try {
-      const result = await create({ kind: "link", url: trimmed, source: sourceFromUrl(trimmed) });
+      if (!userId) throw new Error("Not signed in");
+      const result = await dropService.create(userId, {
+        kind: "link",
+        url: trimmed,
+        source: sourceFromUrl(trimmed),
+      });
       handleResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save that link.");
@@ -254,7 +260,8 @@ export function AddDropSheet({
     setUploading(true);
     setMode("uploading");
     try {
-      const result = await create({ kind: "note", text: note.trim() });
+      if (!userId) throw new Error("Not signed in");
+      const result = await dropService.create(userId, { kind: "note", text: note.trim() });
       handleResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save that note.");
@@ -322,7 +329,7 @@ export function AddDropSheet({
                     className="flex-1"
                     onClick={async () => {
                       try {
-                        const result = await create({
+                        const result = await dropService.create(userId ?? "", {
                           kind: "link",
                           url: url.trim() || undefined,
                           saveAnyway: true,

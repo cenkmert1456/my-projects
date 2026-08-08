@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -8,7 +7,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService } from "@/lib/services";
 import { Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
@@ -18,15 +19,17 @@ import { timeAgo } from "@/lib/format";
 const TRASH_DAYS = 30;
 
 export default function Trash() {
-  const trash = useQuery(api.drops.trash);
-  const restore = useMutation(api.drops.restore);
-  const deletePermanently = useMutation(api.drops.deletePermanently);
-  const emptyTrash = useMutation(api.drops.emptyTrash);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data: trash, loading } = useRealtimeQuery(
+    () => dropService.trash(uid as string),
+    { table: "drops", userId: uid },
+  );
   const navigate = useNavigate();
   const [emptyOpen, setEmptyOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  if (!trash) {
+  if (loading || !trash) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -103,7 +106,7 @@ export default function Trash() {
                     size="sm"
                     className="gap-1.5 rounded-xl text-muted-foreground hover:text-primary"
                     onClick={async () => {
-                      await restore({ id: drop._id });
+                      await dropService.restore(uid as string, drop._id);
                       toast("Restored to your library");
                     }}
                   >
@@ -114,17 +117,17 @@ export default function Trash() {
                     size="sm"
                     className="gap-1.5 rounded-xl text-muted-foreground hover:text-destructive"
                     onClick={async () => {
-                      setBusyId(drop._id.toString());
+                      setBusyId(drop._id);
                       try {
-                        await deletePermanently({ id: drop._id });
+                        await dropService.deletePermanently(uid as string, drop._id);
                         toast("Deleted forever");
                       } finally {
                         setBusyId(null);
                       }
                     }}
-                    disabled={busyId === drop._id.toString()}
+                    disabled={busyId === drop._id}
                   >
-                    {busyId === drop._id.toString() ? (
+                    {busyId === drop._id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Trash2 className="h-3.5 w-3.5" />
@@ -155,8 +158,8 @@ export default function Trash() {
               variant="destructive"
               className="rounded-xl"
               onClick={async () => {
-                const n = await emptyTrash();
-                toast(`${n} Drop${n !== 1 ? "s" : ""} permanently deleted`);
+                await dropService.emptyTrash(uid as string);
+                toast(`Trash emptied`);
                 setEmptyOpen(false);
               }}
             >

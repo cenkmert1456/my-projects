@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,17 +8,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { collectionService, dropService } from "@/lib/services";
+import type { Drop } from "@/lib/supabase/database.types";
 import { FolderHeart, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 export default function Collections() {
-  const collections = useQuery(api.collections.list);
-  const allDrops = useQuery(api.drops.listAll, {});
-  const createCollection = useMutation(api.collections.create);
-  const removeCollection = useMutation(api.collections.remove);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data: collections, loading } = useRealtimeQuery(
+    () => collectionService.list(uid as string),
+    { table: "collections", userId: uid },
+  );
+  const { data: allDrops } = useRealtimeQuery(
+    () => dropService.listAll(uid as string),
+    { table: "drops", userId: uid },
+  );
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("📁");
@@ -29,10 +37,10 @@ export default function Collections() {
     if (!allDrops) return [];
     const now = Date.now();
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-    const inItaly = (d: (typeof allDrops)[number]) =>
+    const inItaly = (d: Drop) =>
       d.place?.country === "Italy" ||
       d.entities.some((e) => e.type === "place" && e.metadata?.country === "Italy");
-    const future = (d: (typeof allDrops)[number]) =>
+    const future = (d: Drop) =>
       (d.event?.startTime && d.event.startTime > now) ||
       (d.reservation?.startTime && d.reservation.startTime > now);
     return [
@@ -46,15 +54,15 @@ export default function Collections() {
   }, [allDrops]);
 
   const handleCreate = async () => {
-    if (!name.trim()) return;
-    const id = await createCollection({ name: name.trim(), emoji });
+    if (!name.trim() || !uid) return;
+    const created = await collectionService.create(uid, { name: name.trim(), emoji });
     setCreating(false);
     setName("");
     toast("Collection created");
-    navigate(`/app/collections/${id}`);
+    navigate(`/app/collections/${created.id}`);
   };
 
-  if (!collections || !allDrops) {
+  if (loading || !collections || !allDrops) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -130,7 +138,7 @@ export default function Collections() {
                   type="button"
                   aria-label={`Delete ${c.name}`}
                   onClick={async () => {
-                    await removeCollection({ id: c._id });
+                    await collectionService.remove(uid as string, c._id);
                     toast("Collection deleted");
                   }}
                   className="absolute right-2.5 top-2.5 cursor-pointer rounded-lg p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
@@ -157,7 +165,7 @@ export default function Collections() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Tokyo Trip"
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              onKeyDown={(e) => e.key === "Enter" && void handleCreate()}
             />
             <div className="flex flex-wrap gap-1.5">
               {["📁", "✈️", "🍝", "👟", "🎬", "💡", "🛒", "🏠", "❤️", "💼"].map((e) => (
@@ -180,7 +188,7 @@ export default function Collections() {
             <Button variant="outline" onClick={() => setCreating(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={!name.trim()}>
+            <Button onClick={() => void handleCreate()} disabled={!name.trim()}>
               Create
             </Button>
           </DialogFooter>
@@ -206,7 +214,7 @@ function MagicCard({
   m,
   onClick,
 }: {
-  m: { name: string; emoji: string; drops: unknown[] };
+  m: { name: string; emoji: string; drops: Drop[] };
   onClick: () => void;
 }) {
   return (

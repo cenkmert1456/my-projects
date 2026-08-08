@@ -1,28 +1,19 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useAction } from "convex/react";
 import { motion } from "framer-motion";
 import { ArrowUp, Loader2, Lock, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import type { Doc } from "@/convex/_generated/dataModel";
+import { useAuth } from "@/hooks/use-auth";
+import { searchService } from "@/lib/services";
+import type { AskSource } from "@/lib/supabase/database.types";
 import { CATEGORY_META } from "@/lib/drop-meta";
 import { cn } from "@/lib/utils";
-
-interface Source {
-  id: string;
-  title: string;
-  summary?: string;
-  category?: string;
-  savedAt?: number;
-  facts?: string;
-}
 
 interface Msg {
   role: "user" | "assistant";
   text?: string;
-  sources?: Source[];
+  sources?: AskSource[];
 }
 
 const SUGGESTIONS = [
@@ -33,11 +24,12 @@ const SUGGESTIONS = [
 ];
 
 export default function AskDrop() {
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
   const [params] = useSearchParams();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const askDrop = useAction(api.search.askDrop);
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -57,7 +49,7 @@ export default function AskDrop() {
 
   const send = async (raw?: string) => {
     const text = (raw ?? input).trim();
-    if (!text || loading) return;
+    if (!text || loading || !uid) return;
     setInput("");
     const nextMessages: Msg[] = [...messages, { role: "user", text }];
     setMessages(nextMessages);
@@ -68,16 +60,8 @@ export default function AskDrop() {
         .filter((m) => m.text)
         .map((m) => ({ role: m.role as "user" | "assistant", content: m.text as string }))
         .slice(-8);
-      const res = await askDrop({ query: text, history });
-      const sources: Source[] = (res.sources ?? []).map((s) => ({
-        id: String(s.id),
-        title: s.title,
-        summary: s.summary,
-        category: s.category,
-        savedAt: s.savedAt,
-        facts: s.facts,
-      }));
-      setMessages((m) => [...m, { role: "assistant", text: res.answer ?? undefined, sources }]);
+      const res = await searchService.askDrop(uid, { query: text, history });
+      setMessages((m) => [...m, { role: "assistant", text: res.answer ?? undefined, sources: res.sources }]);
     } catch {
       setMessages((m) => [...m, { role: "assistant", text: "Sorry — I couldn't search your Drops right now. Try again in a moment." }]);
     } finally {

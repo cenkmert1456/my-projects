@@ -3,15 +3,14 @@
 // One typed API for the whole app. On mobile (Android/iOS) it talks to the
 // native DropAI engine via the local `@drop/ai` Capacitor plugin — on-device
 // OCR, embeddings, tiered on-device models, automatic provisioning. On the
-// web it degrades gracefully: the Convex backend pipeline keeps doing the
-// analysis (cloud if configured, otherwise the same built-in deterministic
-// engine), and embeddings mirror the identical algorithm used server-side and
-// natively, so semantic search stays consistent everywhere.
+// web it uses the same built-in deterministic engine (src/lib/services/
+// analyze.ts + src/lib/embed.ts), so semantic search stays consistent
+// everywhere with zero configuration.
 //
 // Users never see models, keys, servers or configuration — only "DROP
 // Intelligence: Ready".
 
-import { demoEmbedText } from "@/convex/ai/demo";
+import { dropEmbedText } from "@/lib/embed";
 import { isNative } from "@/lib/mobile/platform";
 
 export type DropAITier = "system" | "local" | "light" | "basic" | "web";
@@ -123,9 +122,9 @@ function emit(status: DropAIStatus) {
   }
 }
 
-/** The same deterministic embed used by the server + native engines. */
+/** The same deterministic embed used by the native engines + storage. */
 export function dropAIEmbed(text: string): number[] {
-  return demoEmbedText(text);
+  return dropEmbedText(text);
 }
 
 const webEngine: DropAIEngine = {
@@ -136,7 +135,7 @@ const webEngine: DropAIEngine = {
     return webStatus;
   },
   async getEmbedding(text) {
-    return demoEmbedText(text);
+    return dropEmbedText(text);
   },
   async ocr() {
     return null; // server pipeline handles image understanding on web
@@ -196,7 +195,7 @@ export async function getDropAI(): Promise<DropAIEngine> {
       } catch {
         // fall through to shared algorithm
       }
-      return demoEmbedText(text);
+      return dropEmbedText(text);
     },
     async ocr(imageDataUrl) {
       try {

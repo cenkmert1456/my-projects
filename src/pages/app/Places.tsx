@@ -1,5 +1,7 @@
-import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService } from "@/lib/services";
+import type { Drop } from "@/lib/supabase/database.types";
 import { Loader2, MapPin, Navigation } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
@@ -24,7 +26,12 @@ const PLACE_EMOJI: Record<string, string> = {
 };
 
 export default function Places() {
-  const places = useQuery(api.drops.places);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data: places, loading } = useRealtimeQuery(
+    () => dropService.places(uid as string),
+    { table: "drops", userId: uid },
+  );
   const [filter, setFilter] = useState("all");
   const navigate = useNavigate();
 
@@ -35,7 +42,7 @@ export default function Places() {
     return places.filter((d) => d.place?.category === filter);
   }, [places, filter]);
 
-  if (!places) {
+  if (loading || !places) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -43,7 +50,7 @@ export default function Places() {
     );
   }
 
-  const mapsQuery = (drop: (typeof places)[number]) => {
+  const mapsQuery = (drop: Drop) => {
     const name = drop.place?.name ?? drop.title;
     const city = drop.place?.city ? `, ${drop.place.city}` : "";
     const country = drop.place?.country ? `, ${drop.place.country}` : "";

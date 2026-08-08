@@ -31,9 +31,9 @@ The core loop is `SAVE → UNDERSTAND → SEARCH`:
   with an optional cloud Gemini boost. Everything degrades gracefully to the
   deterministic analyzer, so the product never breaks and never asks for
   configuration.
-- **Hybrid search** (`src/convex/search.ts`): keyword scoring + semantic
-  vectors + metadata filters + favorites nudge, with natural time phrases
-  ("last week", "around March") parsed into date windows.
+- **Hybrid search** (`src/lib/services/search.ts`): keyword scoring +
+  semantic vectors + metadata filters + favorites nudge, with natural time
+  phrases ("last week", "around March") parsed into date windows.
 - **Ask DROP with sources**: retrieval-augmented answers strictly from your
   own Drops, with referenced source cards and conversational follow-ups.
 - **Trash & recovery**: soft delete → 30-day recoverable trash → permanent
@@ -55,22 +55,35 @@ The core loop is `SAVE → UNDERSTAND → SEARCH`:
 | Layer    | Technology                                                        |
 | -------- | ----------------------------------------------------------------- |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui, Framer Motion |
-| Backend  | **Convex** (managed serverless backend + database + file storage) |
-| Auth     | Convex Auth — email OTP + anonymous (guest)                       |
-| AI       | **DROP Intelligence** — deterministic built-in engine (default, zero-config) → optional Gemini (cloud, only when a key exists); on-device native engine in the mobile apps |
+| Backend  | **Supabase** (PostgreSQL + Row Level Security + Storage + Realtime) |
+| Auth     | Supabase Auth — email/password + persistent sessions (secure device storage on mobile) |
+| AI       | **DROP Intelligence** — deterministic built-in engine (default, zero-config); on-device native engine in the mobile apps |
 | Search   | Hybrid: keyword scoring + semantic vectors (cosine) + metadata filters |
 
 ## Local setup
 
 ```bash
 bun install
-bun convex dev --once      # pushes backend functions & generates types
 bun run dev                # starts the Vite dev server
 ```
 
-Convex runs against the deployment configured via `VITE_CONVEX_URL`
-(injected by the platform — secrets live in the Keys/API keys UI, never in
-`.env` files).
+Point the app at your Supabase project with two public env vars
+(no backend to run locally):
+
+```bash
+VITE_SUPABASE_URL=https://<project>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon key>
+```
+
+Apply the schema (tables, RLS policies, storage buckets, pgvector) from the
+migrations directory:
+
+```bash
+supabase link --project-ref <project>
+supabase db push
+```
+
+No Convex deployment, no codegen, no auth issuer — nothing else to run.
 
 ---
 
@@ -82,12 +95,10 @@ or download manually for the web product.
 
 ### How it works
 
-- **Web**: DROP's built-in deterministic engine (`src/convex/ai/demo.ts`)
-  understands every Drop out of the box — smart titles, categories, entities,
-  prices, dates, actions, and consistent semantic embeddings for search. If a
-  `GOOGLE_API_KEY` exists, Gemini is used automatically as an optional boost;
-  if it doesn't, DROP simply runs on its built-in engine. Nothing ever stops
-  working when a key is missing or a quota expires.
+- **Web**: DROP's built-in deterministic engine (`src/lib/services/analyze.ts`
+  + `src/lib/embed.ts`) understands every Drop out of the box — smart titles,
+  categories, entities, prices, dates, actions, and consistent semantic
+  embeddings for search. Nothing ever stops working, no key is ever required.
 - **Mobile (Android/iOS)**: a native **DropAI engine** (`packages/drop-ai/`)
   runs directly inside the app — on-device OCR (ML Kit / Apple Vision),
   deterministic metadata extraction, local embeddings, and tiered on-device
@@ -113,11 +124,6 @@ Set only if you want a cloud intelligence boost on the web backend:
 Get a key at <https://aistudio.google.com/apikey>. **Without it, DROP works
 fully on the built-in engine** — the key only upgrades analysis quality.
 
-> **Developers only:** a self-hosted Ollama provider exists in
-> `src/convex/ai/ollama.ts` purely as a dev/diagnostic option. It is never
-> part of the default chain and activates only when `OLLAMA_BASE_URL` is
-> explicitly set. End users never see or need it.
-
 ### AI failure fallback
 
 - Vision unavailable → text metadata + deterministic rules still classify the Drop.
@@ -127,46 +133,46 @@ fully on the built-in engine** — the key only upgrades analysis quality.
 - A failed analysis never loses the file — the Drop stays in your library as
   `needs_review` with a **Try analysis again** action (Action Center / Inbox).
 
-### Swapping providers
+### The web engine
 
-All AI goes through `AIProvider` (`src/convex/ai/types.ts`). Implementations:
-`ollama.ts`, `gemini.ts`, `demo.ts`. Add a new provider by implementing
-`analyze()`, `embed()`, optional `synthesize()`, `ping()` and `health()`,
-then wire it into `resolveProvider()` in `src/convex/ai/index.ts`.
+Analysis runs client-side through `analyzeText()` (categorization, entity
+recognition, pricing, dates, suggested actions) and `dropEmbedText()` (a
+stable 128-dim embedding used everywhere for semantic search). On mobile the
+native **DropAI** engine upgrades this with on-device OCR and local models via
+`dropService.attachOcr` / `attachAnalysis`. The same deterministic algorithm
+is used across web and native so search vectors stay consistent.
 
 ---
 
 ## Architecture
 
 ```
-src/convex/
-  schema.ts          Data model: users, drops, collections, collectionDrops,
-                     reminders, searchHistory, stacks, stackDrops, activities,
-                     plans
-  drops.ts           Drop CRUD + queries + duplicate detection + trash/restore/
-                     permanent-delete + merge + bulk actions + activity log
-  analyze.ts         Async AI pipeline action (scheduled on create)
-  search.ts          Hybrid search action + Ask DROP (sources, follow-ups,
-                     natural time-language) 
-  aiHealth.ts        AI provider health check (Settings → DROP Intelligence)
-  stacks.ts          Stack (research-group) CRUD + membership
-  collections.ts     Collections + membership
-  reminders.ts       Reminders (text + timestamp, complete/dismiss)
-  profile.ts         Settings, stats, data export, account deletion, demo data
-  searchHistory.ts   Search history (opt-out)
-  seed.ts            Plan catalog seeding (limits live in the DB)
-  ai/                Provider abstraction (built-in demo engine + optional
-                     Gemini; dev-only Ollama) + parsing
+supabase/migrations/0001_initial_schema.sql
+                       PostgreSQL schema: profiles, drops, collections,
+                       collection_drops, stacks, stack_drops, reminders,
+                       search_history, subscriptions, shared_collections,
+                       notifications, activities, plans — with UUID keys, JSONB
+                       metadata, pgvector(128) embeddings, full RLS policies
+                       and private storage buckets (drop-files)
+
+src/lib/services/     The data-access layer — drops, collections, stacks,
+                       reminders, search (hybrid + Ask DROP), profile, storage
+                       (signed URLs), activities/notifications. Every query is
+                       scoped to the authenticated user id; RLS is the backstop.
+  supabase/client.ts   Supabase client (anon key only, Capacitor-aware storage)
+  supabase/database.types.ts  Strong app types (Drop, Collection, Stack, …)
+  services/analyze.ts  Built-in deterministic AI analysis (zero-config)
+  embed.ts             128-dim embedding used by web + native search
+  hooks/use-realtime-query.ts  Reactive data hook (fetch + Realtime refetch)
 
 packages/drop-ai/     Native DropAI engine (Capacitor plugin): Kotlin + Swift
                      OCR, embeddings, tiered on-device models, model manager
                      (verified, resumable downloads), tier detection
-  lib/               Constants (categories, plans, demo data), search-text builder
 
 src/
   pages/Landing.tsx      Marketing page (hero demo, feature stories, privacy,
-                         local-AI section, pricing, FAQ)
-  pages/Auth.tsx         Sign-in (email OTP / guest) with DROP branding
+                         AI section, pricing, FAQ)
+  pages/Auth.tsx         Sign-in / sign-up (Supabase email + password, reset)
   pages/app/…            Home, Search, Inbox, Collections(+detail), Places,
                          Wishlist, Upcoming, Ask DROP, Drop detail, Profile,
                          Stacks(+detail), Trash, Settings, Action Center
@@ -177,26 +183,25 @@ src/
                          group-into-stack), Drop card, status badges
 ```
 
-### The AI pipeline
+### The understanding pipeline
 
-1. `drops.create` inserts the Drop instantly and schedules `analyze.analyzeDrop`.
-2. The action resolves the provider (built-in engine by default, optional
-   Gemini when a key exists — never Ollama), fetches the original file
-   (signed URL) if present, and gets structured JSON: title,
+1. `dropService.create` inserts the Drop instantly. For image/voice Drops the
+   file uploads to the private `drop-files` bucket first, then the Drop row is
+   written with its storage path.
+2. Analysis runs locally with the built-in engine (`analyzeText`): title,
    summary, category, subcategory, keywords, entities, product/place/event/
    receipt/reservation/flight data, suggested action/reminder, confidence.
+   Native devices upgrade this with on-device OCR + local models
+   (`attachOcr` / `attachAnalysis`).
 3. The searchable text is embedded once and stored on the Drop with
-   `embeddingProvider` for cache consistency (embeddings are never regenerated
-   per search).
-4. Results are written back; `status` becomes `ready` (or `needs_review` if
-   confidence < 0.45, `failed` on error — the Drop is never lost).
-
-Cost controls: analyses are cached via `analysisVersion`, embeddings are
-generated once per content, and `retryAnalysis` re-runs on demand.
+   `embedding_provider` for consistency (embeddings are never regenerated per
+   search).
+4. `status` becomes `ready` (or `needs_review` on low confidence, `failed` on
+   error — the Drop is never lost). `retryAnalysis` re-runs on demand.
 
 ### Search
 
-`search.searchDrops` combines:
+`searchService.searchDrops` combines:
 
 - **Keyword scoring** across title ×4, keywords ×3, summary ×2, tags ×2,
   notes ×1.5, category/subcategory ×1.5, text/OCR ×1
@@ -208,40 +213,38 @@ generated once per content, and `retryAnalysis` re-runs on demand.
 - Favorites get a small nudge on genuinely-close results (never buries
   relevant older Drops)
 
-Every search is scoped to the authenticated user server-side — cross-user
-retrieval is impossible.
+Every search is scoped to the authenticated user — cross-user retrieval is
+impossible, and RLS blocks it at the database level too.
 
 ### Ask DROP
 
-`search.askDrop` retrieves the top-matching Drops (optionally scoped to one
-Drop or a Collection), passes conversation history for follow-ups, and — when
-the provider can synthesize — asks it to answer **strictly from those saved
-items**, citing source numbers. The UI renders "Based on N Drops" source
-cards that open the Drop. Without synthesis, it falls back to a structured
-result list. It never invents memories not in your Drops.
+`searchService.askDrop` retrieves the top-matching Drops (optionally scoped to
+one Drop or a Collection), passes conversation history for follow-ups, and
+asks the DROP engine to answer **strictly from those saved items**. The UI
+renders "Based on N Drops" source cards that open the Drop. It never invents
+memories not in your Drops.
 
 ---
 
 ## Plans & billing
 
-Plan definitions live in `src/convex/lib/constants.ts` and are seeded into
-the `plans` table, so limits are configurable in the database. Free = 100
-Drops; Pro = $5.99/mo or $49.99/yr; Family = $9.99/mo.
+Plan definitions live in the `plans` table (seeded by the migration). Free =
+100 Drops; Pro = $5.99/mo or $49.99/yr; Family = $9.99/mo.
 
-Stripe is **not wired up yet** — `profile.planInfo` reads the plan table and
-the UI gates the free limit. To add billing, use the Vly payments gateway
-(see `integrations.md`) or Stripe webhooks, updating `users.plan` /
-`planStatus` / `planRenewsAt`.
+Stripe is **not wired up yet** — `profileService.planInfo` reads the plans
+row and the UI gates the free limit. To add billing, update
+`profiles.plan` / `plan_status` / `plan_renews_at` server-side.
 
 ---
 
 ## Privacy & security
 
-- Private by default: Drops are never public; no sharing URLs are generated.
-- Files are stored in Convex storage and served only via signed URLs resolved
-  inside authenticated queries (`drops.getStorageUrl`).
-- Every query/mutation/action checks ownership on the server (`userId`) —
-  including every search and Ask DROP context.
+- Private by default: Drops are never public; sharing is always explicit.
+- Files are stored in the private `drop-files` storage bucket and served only
+  via short-lived signed URLs (`storageService.getSignedUrl`).
+- **Row Level Security**: every table has `auth.uid() = user_id` policies for
+  select/insert/update/delete — including search and Ask DROP contexts.
+  Private Drop data can never leak between users.
 - **On-device AI (mobile)**: screenshots are understood locally — OCR,
   classification, embeddings and model inference run inside the app and never
   go to a third-party AI provider. Database & files still synchronize to your
@@ -267,7 +270,7 @@ layer; the web app, PWA, backend, database and AI are untouched.
 Web (PWA)   →  react-router + existing UI
 Android     →  Capacitor + Kotlin (share receiver, deep links, icons)
 iOS         →  Capacitor + Swift (share extension handoff, deep links, icons)
-Backend     →  the same Convex backend (one shared database)
+Backend     →  the same Supabase backend (one shared database)
 ```
 
 ### Native capabilities implemented
@@ -298,7 +301,7 @@ Backend     →  the same Convex backend (one shared database)
 
 ```bash
 bun install
-export VITE_CONVEX_URL=…   # same URL the web app uses
+export VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=…
 bun run build               # production web build → dist/
 npx cap sync                # copy web build + plugins into android/ & ios/
 ```
@@ -388,11 +391,11 @@ out of the box with no external service.
 
 Web billing stays on **Stripe**. For the stores: iOS must use **StoreKit / App
 Store In-App Purchase** and Android **Google Play Billing** (store policy).
-The plan/limit architecture reads from the Convex `plans` table, so a native
-purchase flow can grant entitlements server-side without changing the product
-logic. Store billing is **not faked** — no placeholder purchase buttons;
-when you're ready, implement the native purchase flow per platform and
-update `users.plan` via server-side receipt verification.
+The plan/limit architecture reads from the Supabase `plans` table, so a
+native purchase flow can grant entitlements server-side without changing the
+product logic. Store billing is **not faked** — no placeholder purchase
+buttons; when you're ready, implement the native purchase flow per platform
+and update `profiles.plan` via server-side receipt verification.
 
 ### Mobile privacy
 
@@ -407,15 +410,16 @@ the app switcher on supported platforms.
 
 ## Deployment
 
-The platform manages the dev server and Convex push. For production:
+For production:
 
-1. No AI configuration required — DROP's built-in engine works out of the
-   box. Optionally set `GOOGLE_API_KEY` for a cloud boost on the web backend.
-2. `bun convex deploy` to push backend functions to production.
-3. `bun run build && bun run preview` (or host the static build) for the
+1. Create a Supabase project and apply the migrations
+   (`supabase db push`) — tables, RLS, storage buckets and pgvector are all
+   included in `supabase/migrations/`.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for the frontend
+   build (public values only — the service-role key never ships in the app).
+3. Enable email/password auth in the Supabase dashboard (and password reset).
+4. `bun run build && bun run preview` (or host the static build) for the
    frontend.
-4. Configure your auth issuer/domain in `src/convex/auth.config.ts` if
-   self-hosting outside freebuff.
 
 ## Troubleshooting
 

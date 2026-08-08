@@ -1,11 +1,11 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService, reminderService } from "@/lib/services";
 import { Bell, Check, Loader2, Pin, RotateCcw, Sparkles, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { formatDateTime, timeAgo } from "@/lib/format";
-import type { Doc } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
 interface ActionItem {
@@ -21,18 +21,22 @@ interface ActionItem {
 }
 
 export default function Actions() {
-  const all = useQuery(api.drops.listAll, {});
-  const reminders = useQuery(api.reminders.listUpcoming);
-  const retryAnalysis = useMutation(api.drops.retryAnalysis);
-  const completeReminder = useMutation(api.reminders.complete);
-  const dismissReminder = useMutation(api.reminders.dismiss);
-  const toggleArchive = useMutation(api.drops.toggleArchive);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data: all, loading } = useRealtimeQuery(
+    () => dropService.listAll(uid as string),
+    { table: "drops", userId: uid },
+  );
+  const { data: reminders } = useRealtimeQuery(
+    () => reminderService.listUpcoming(uid as string),
+    { table: "reminders", userId: uid },
+  );
   const [done, setDone] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
   const items = useMemo<ActionItem[]>(() => {
     const out: ActionItem[] = [];
-    const drops = (all ?? []) as Doc<"drops">[];
+    const drops = all ?? [];
     const now = Date.now();
     const day = 86400000;
 
@@ -45,10 +49,10 @@ export default function Actions() {
           emoji: "⚠️",
           title: "DROP couldn't analyze this",
           detail: `“${d.title}” — the file is safe in your library.`,
-          dropId: d._id.toString(),
+          dropId: d._id,
           cta: {
             label: "Try analysis again",
-            onClick: () => void retryAnalysis({ id: d._id }),
+            onClick: () => void dropService.retryAnalysis(uid as string, d._id),
           },
         });
       } else if (d.status === "needs_review") {
@@ -58,7 +62,7 @@ export default function Actions() {
           emoji: "👀",
           title: "Needs your eyes",
           detail: `“${d.title}” was saved ${timeAgo(d.savedAt)} — DROP is unsure about a few details.`,
-          dropId: d._id.toString(),
+          dropId: d._id,
         });
       }
     }
@@ -74,8 +78,8 @@ export default function Actions() {
           emoji: "🧾",
           title: `Return window closes ${days === 1 ? "tomorrow" : `in ${days} days`}`,
           detail: `“${d.title}” — return by ${formatDateTime(dl)}.`,
-          dropId: d._id.toString(),
-          onDone: () => void toggleArchive({ id: d._id }),
+          dropId: d._id,
+          onDone: () => void dropService.toggleArchive(uid as string, d._id),
         });
       }
     }
@@ -91,7 +95,7 @@ export default function Actions() {
           emoji: d.flight ? "✈️" : d.event ? "🎟️" : "🔖",
           title: days === 0 ? "Happening today" : days === 1 ? "Tomorrow" : `In ${days} days`,
           detail: `“${d.title}” — ${formatDateTime(when)}.`,
-          dropId: d._id.toString(),
+          dropId: d._id,
         });
       }
     }
@@ -104,9 +108,9 @@ export default function Actions() {
         emoji: "⏰",
         title: r.text,
         detail: r.dropTitle ? `“${r.dropTitle}” · ${formatDateTime(r.remindAt)}` : formatDateTime(r.remindAt),
-        dropId: r.dropId?.toString(),
-        onDone: () => void completeReminder({ id: r._id }),
-        onDismiss: () => void dismissReminder({ id: r._id }),
+        dropId: r.dropId,
+        onDone: () => void reminderService.complete(uid as string, r._id),
+        onDismiss: () => void reminderService.dismiss(uid as string, r._id),
       });
     }
 
@@ -119,15 +123,15 @@ export default function Actions() {
           emoji: "📌",
           title: d.title,
           detail: `${d.category} · pinned ${timeAgo(d.savedAt)}`,
-          dropId: d._id.toString(),
+          dropId: d._id,
         });
       }
     }
 
     return out;
-  }, [all, reminders, retryAnalysis, completeReminder, dismissReminder, toggleArchive]);
+  }, [all, reminders, uid]);
 
-  if (!all || !reminders) {
+  if (loading || !all || !reminders) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

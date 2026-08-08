@@ -1,8 +1,8 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/use-auth";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { profileService } from "@/lib/services";
+import { checkWebAI, type WebAIHealth } from "@/lib/ai-health";
 import {
   Check,
   ChevronDown,
@@ -33,27 +33,15 @@ import { biometricsAvailable } from "@/lib/mobile/native";
 import { setAppLockDelay, setAppLockEnabled, type LockDelay } from "@/lib/mobile/app-lock";
 import { useDropAI } from "@/lib/drop-ai";
 
-type AIHealth = {
-  ok: boolean;
-  provider: string;
-  label: string;
-  local: boolean;
-  models?: { text?: string; vision?: string; embedding?: string };
-  latencyMs?: number;
-  error?: string;
-  activeProvider?: string;
-};
-
 export default function Settings() {
   const { user } = useAuth();
+  const uid = user?.id ?? null;
   const { resolvedTheme, setTheme } = useTheme();
   const dark = resolvedTheme === "dark";
   const navigate = useNavigate();
-  const updateProfile = useMutation(api.profile.updateProfile);
-  const exportData = useQuery(api.profile.exportData);
-  const checkAI = useAction(api.aiHealth.checkAI);
-  const [health, setHealth] = useState<AIHealth | null>(null);
+  const [health, setHealth] = useState<WebAIHealth | null>(null);
   const [checking, setChecking] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [appLockOn, setAppLockOn] = useState(false);
   const [lockDelay, setLockDelay] = useState<LockDelay>("immediate");
   const [biometricOk, setBiometricOk] = useState(false);
@@ -63,15 +51,15 @@ export default function Settings() {
   const runHealthCheck = async () => {
     setChecking(true);
     try {
-      const res = await checkAI();
-      setHealth(res as AIHealth);
+      const res = await checkWebAI();
+      setHealth(res);
     } catch {
       setHealth({
         ok: false,
         provider: "unknown",
         label: "Health check failed",
         local: false,
-        error: "Couldn't reach the AI configuration service. Try again in a moment.",
+        error: "Couldn't determine the AI engine state. Try again in a moment.",
       });
     } finally {
       setChecking(false);
@@ -92,16 +80,24 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleExport = () => {
-    if (!exportData?.json) return;
-    const blob = new Blob([exportData.json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `drop-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast("Your data is downloading");
+  const handleExport = async () => {
+    if (!uid || exporting) return;
+    setExporting(true);
+    try {
+      const payload = await profileService.exportData(uid);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `drop-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast("Your data is downloading");
+    } catch {
+      toast("Couldn't export your data — try again");
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -159,7 +155,7 @@ export default function Settings() {
         <SettingRow icon={Search} title="Search history" desc="Save my searches to make repeat lookups faster">
           <Switch
             defaultChecked={user?.searchHistoryEnabled !== false}
-            onCheckedChange={(v) => void updateProfile({ patch: { searchHistoryEnabled: v } })}
+            onCheckedChange={(v) => void profileService.updateProfile(uid as string, { searchHistoryEnabled: v })}
           />
         </SettingRow>
         <p className="px-3 pb-3 pt-1 text-xs leading-relaxed text-muted-foreground">
@@ -186,7 +182,7 @@ export default function Settings() {
               type="button"
               onClick={() => {
                 setTheme(id);
-                void updateProfile({ patch: { theme: id } });
+                void profileService.updateProfile(uid as string, { theme: id });
               }}
               className={cn(
                 "flex cursor-pointer flex-col items-center gap-2 rounded-2xl border p-4 transition-colors",
@@ -212,13 +208,13 @@ export default function Settings() {
         <SettingRow icon={Sparkles} title="Daily recall" desc="Occasionally resurface forgotten Drops on Home">
           <Switch
             defaultChecked={user?.dailyRecallEnabled !== false}
-            onCheckedChange={(v) => void updateProfile({ patch: { dailyRecallEnabled: v } })}
+            onCheckedChange={(v) => void profileService.updateProfile(uid as string, { dailyRecallEnabled: v })}
           />
         </SettingRow>
         <SettingRow icon={Search} title="Search history" desc="Save my searches to make repeat lookups faster">
           <Switch
             defaultChecked={user?.searchHistoryEnabled !== false}
-            onCheckedChange={(v) => void updateProfile({ patch: { searchHistoryEnabled: v } })}
+            onCheckedChange={(v) => void profileService.updateProfile(uid as string, { searchHistoryEnabled: v })}
           />
         </SettingRow>
         <SettingRow icon={Globe} title="Language" desc="Your UI language — English for now, more coming">
@@ -235,9 +231,9 @@ export default function Settings() {
         <Button
           variant="outline"
           className="w-full justify-start gap-2.5 rounded-2xl"
-          onClick={handleExport}
+          onClick={() => void handleExport()}
         >
-          <Download className="h-4 w-4" /> Export my data (JSON)
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export my data (JSON)
         </Button>
         <p className="text-xs leading-relaxed text-muted-foreground">
           Your export includes every Drop's metadata, notes, collections, reminders
@@ -307,7 +303,7 @@ function DropIntelligenceSection({
   storageBytes,
   onRefreshStorage,
 }: {
-  health: AIHealth | null;
+  health: WebAIHealth | null;
   checking: boolean;
   onRecheck: () => void;
   wifiOnly: boolean;
@@ -349,18 +345,6 @@ function DropIntelligenceSection({
           <Sparkles className="h-5 w-5 text-primary" />
           <h2 className="font-bold tracking-tight">DROP Intelligence</h2>
         </div>
-        {native && !downloading && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 rounded-xl text-xs text-muted-foreground"
-            onClick={() => void engine?.prepare()}
-            disabled={detecting}
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", detecting && "animate-spin")} />
-            Re-check
-          </Button>
-        )}
         {!native && (
           <Button
             variant="ghost"
@@ -370,6 +354,18 @@ function DropIntelligenceSection({
             disabled={checking}
           >
             <RefreshCw className={cn("h-3.5 w-3.5", checking && "animate-spin")} />
+            Re-check
+          </Button>
+        )}
+        {native && !downloading && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 rounded-xl text-xs text-muted-foreground"
+            onClick={() => void engine?.prepare()}
+            disabled={detecting}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", detecting && "animate-spin")} />
             Re-check
           </Button>
         )}

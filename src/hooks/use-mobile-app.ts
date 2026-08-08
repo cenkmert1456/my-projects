@@ -10,8 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useTheme } from "next-themes";
-import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
+import { dropService, storageService } from "@/lib/services";
 import {
   isNative,
   parseDeepLink,
@@ -44,15 +43,14 @@ export interface IncomingSharePayload {
 export function useMobileApp() {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const userId = user?.id;
   const [online, setOnline] = useState<boolean>(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [locked, setLocked] = useState(false);
   // Bumped when the app resumes — components that key on it re-fetch.
   const [refreshKey, setRefreshKey] = useState(0);
-  const create = useMutation(api.drops.create);
-  const generateUploadUrl = useMutation(api.drops.generateUploadUrl);
 
   // Boot: load app-lock settings, lock portrait, apply status bar style.
   useEffect(() => {
@@ -81,37 +79,36 @@ export function useMobileApp() {
 
   // Flush queued captures when connectivity returns and the user is authed.
   useEffect(() => {
-    if (!online || !isAuthenticated) return;
+    if (!online || !isAuthenticated || !userId) return;
     if (queuedCount() === 0) return;
     const flush = async () => {
       for (const item of listQueued()) {
         try {
           if (item.kind === "link" && item.url) {
-            await create({ kind: "link", url: item.url, saveAnyway: true });
+            await dropService.create(userId, { kind: "link", url: item.url, saveAnyway: true });
             removeQueued(item.id);
             continue;
           }
           if (item.kind === "note" && item.text) {
-            await create({ kind: "note", text: item.text });
+            await dropService.create(userId, { kind: "note", text: item.text });
             removeQueued(item.id);
             continue;
           }
           if (item.payload && (item.kind === "image" || item.kind === "screenshot" || item.kind === "document")) {
-            const url = await generateUploadUrl();
             const bytes = atob(item.payload.split(",")[1] ?? "");
             const arr = new Uint8Array(bytes.length);
             for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
             const blob = new Blob([arr], { type: item.contentType ?? "image/jpeg" });
-            const res = await fetch(url, {
-              method: "PUT",
-              headers: { "Content-Type": item.contentType ?? "image/jpeg" },
-              body: blob,
+            const path = await storageService.uploadFile({
+              userId,
+              dropId: "pending",
+              file: blob,
+              fileName: item.fileName ?? "capture.jpg",
+              contentType: item.contentType ?? "image/jpeg",
             });
-            if (!res.ok) continue;
-            const storageId = url.split("/").pop() ?? "";
-            await create({
+            await dropService.create(userId, {
               kind: item.kind === "document" ? "document" : "screenshot",
-              storageId,
+              storagePath: path,
               contentType: item.contentType,
               fileName: item.fileName,
             });
@@ -123,7 +120,7 @@ export function useMobileApp() {
       }
     };
     void flush();
-  }, [online, isAuthenticated, create, generateUploadUrl]);
+  }, [online, isAuthenticated, userId]);
 
   // Deep links: drop://drop/123, drop://collection/abc
   useEffect(() => {
@@ -165,7 +162,7 @@ export function useMobileApp() {
   }, [isAuthenticated]);
 
   // App resume: check app lock + bump the refresh key so mounted screens
-  // re-subscribe to fresh data (Convex queries re-run on re-render).
+  // re-fetch fresh data (realtime queries re-run on re-render).
   useEffect(() => {
     if (!isNative()) return;
     let disposed = false;

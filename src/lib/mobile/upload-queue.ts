@@ -8,8 +8,6 @@
 // are small — images are stored as data URLs only while waiting; large files
 // are capped.
 
-import type { Id } from "@/convex/_generated/dataModel";
-
 export interface QueuedCapture {
   id: string;
   kind: "image" | "screenshot" | "document" | "link" | "note";
@@ -100,5 +98,3 @@ export function queueFile(
   });
   return id;
 }
-
-export type { Id };

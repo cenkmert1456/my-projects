@@ -2,8 +2,7 @@ import "@vly-ai/integrations";
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { AuthProvider } from "@/lib/supabase/auth-context";
 import { ThemeProvider } from "next-themes";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
@@ -97,7 +96,7 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+
 
 function RouteSyncer() {
   const location = useLocation();
@@ -129,7 +128,7 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-        <ConvexAuthProvider client={convex}>
+        <AuthProvider>
           <BrowserRouter>
             <RouteSyncer />
             <Suspense fallback={<RouteLoading />}>
@@ -169,7 +168,7 @@ createRoot(document.getElementById("root")!).render(
             </Suspense>
           </BrowserRouter>
           <Toaster />
-        </ConvexAuthProvider>
+        </AuthProvider>
       </ThemeProvider>
     </RootErrorBoundary>
   </StrictMode>,

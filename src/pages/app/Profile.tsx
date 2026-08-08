@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import {
@@ -12,7 +11,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation, useQuery } from "convex/react";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { profileService, searchService } from "@/lib/services";
 import {
   Archive,
   CalendarClock,
@@ -35,18 +35,23 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 export default function Profile() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshProfile } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const navigate = useNavigate();
-  const stats = useQuery(api.profile.stats);
-  const plan = useQuery(api.profile.planInfo);
-  const updateProfile = useMutation(api.profile.updateProfile);
-  const loadDemoData = useMutation(api.profile.loadDemoData);
-  const exportData = useQuery(api.profile.exportData);
-  const clearHistory = useMutation(api.searchHistory.clear);
-  const deleteAccount = useMutation(api.profile.deleteAccount);
+  const uid = user?.id ?? null;
+
+  const { data: stats } = useRealtimeQuery(
+    () => profileService.stats(uid as string),
+    { table: "drops", userId: uid },
+  );
+  const { data: plan } = useRealtimeQuery(
+    () => profileService.planInfo(uid as string),
+    { table: "profiles", userId: uid, rowId: uid },
+  );
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [name, setName] = useState(user?.name ?? "");
+  const [exporting, setExporting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const dark = resolvedTheme === "dark";
 
@@ -61,16 +66,24 @@ export default function Profile() {
       ]
     : [];
 
-  const handleExport = () => {
-    if (!exportData?.json) return;
-    const blob = new Blob([exportData.json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `drop-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast("Your data is downloading");
+  const handleExport = async () => {
+    if (!uid || exporting) return;
+    setExporting(true);
+    try {
+      const payload = await profileService.exportData(uid);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `drop-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast("Your data is downloading");
+    } catch {
+      toast("Couldn't export your data — try again");
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -83,7 +96,8 @@ export default function Profile() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              await updateProfile({ patch: { name: name.trim() || undefined } });
+              await profileService.updateProfile(uid as string, { name: name.trim() || undefined });
+              await refreshProfile();
               toast("Name saved");
             }}
           >
@@ -151,27 +165,27 @@ export default function Profile() {
         <SettingRow icon={Search} title="Search history" desc="Save my searches to make repeat lookups faster">
           <Switch
             defaultChecked={user?.searchHistoryEnabled !== false}
-            onCheckedChange={(v) => void updateProfile({ patch: { searchHistoryEnabled: v } })}
+            onCheckedChange={(v) => void profileService.updateProfile(uid as string, { searchHistoryEnabled: v })}
           />
         </SettingRow>
         <SettingRow icon={Sparkles} title="Daily recall" desc="Occasionally resurface forgotten Drops on Home">
           <Switch
             defaultChecked={user?.dailyRecallEnabled !== false}
-            onCheckedChange={(v) => void updateProfile({ patch: { dailyRecallEnabled: v } })}
+            onCheckedChange={(v) => void profileService.updateProfile(uid as string, { dailyRecallEnabled: v })}
           />
         </SettingRow>
       </section>
 
       {/* Data */}
       <section className="space-y-2.5">
-        <Button variant="outline" className="w-full justify-start gap-2.5 rounded-2xl" onClick={handleExport}>
-          <Download className="h-4 w-4" /> Export my data (JSON)
+        <Button variant="outline" className="w-full justify-start gap-2.5 rounded-2xl" onClick={() => void handleExport()}>
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export my data (JSON)
         </Button>
         <Button
           variant="outline"
           className="w-full justify-start gap-2.5 rounded-2xl"
           onClick={async () => {
-            await clearHistory();
+            await searchService.clearSearchHistory(uid as string);
             toast("Search history cleared");
           }}
         >
@@ -181,11 +195,16 @@ export default function Profile() {
           variant="outline"
           className="w-full justify-start gap-2.5 rounded-2xl"
           onClick={async () => {
-            const res = await loadDemoData();
-            toast(res?.skipped ? "You already have Drops" : `Added ${res?.created ?? 0} sample Drops`);
+            setSeeding(true);
+            try {
+              await profileService.loadDemoData(uid as string);
+              toast("Sample Drops added — search them by name");
+            } finally {
+              setSeeding(false);
+            }
           }}
         >
-          <RefreshCw className="h-4 w-4" /> Load sample data
+          {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Load sample data
         </Button>
       </section>
 
@@ -231,7 +250,7 @@ export default function Profile() {
             <Button
               variant="destructive"
               onClick={async () => {
-                await deleteAccount();
+                await profileService.deleteAccount(uid as string);
                 await signOut();
                 navigate("/");
                 toast("Account deleted. Goodbye 👋");

@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -8,7 +7,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation } from "convex/react";
+import { dropService, storageService } from "@/lib/services";
 import {
   Camera,
   FileUp,
@@ -47,10 +46,9 @@ interface Props {
 }
 
 export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }: Props) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const userId = user?.id;
   const navigate = useNavigate();
-  const generateUploadUrl = useMutation(api.drops.generateUploadUrl);
-  const create = useMutation(api.drops.create);
 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -74,7 +72,7 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
   // -------------------------------------------------------------------------
 
   const uploadFile = async (file: File | Blob, opts: { kind: "screenshot" | "image" | "document"; fileName?: string }) => {
-    if (!isAuthenticated) return null;
+    if (!isAuthenticated || !userId) return null;
     // Optimize images before upload (saves mobile data, faster AI).
     let body: Blob = file;
     let contentType = file.type || "application/octet-stream";
@@ -87,17 +85,16 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
         // keep original
       }
     }
-    const storageUrl = await generateUploadUrl();
-    const res = await fetch(storageUrl, {
-      method: "PUT",
-      headers: { "Content-Type": contentType },
-      body,
+    const path = await storageService.uploadFile({
+      userId,
+      dropId: "pending",
+      file: body,
+      fileName: opts.fileName ?? "capture.bin",
+      contentType,
     });
-    if (!res.ok) throw new Error("Upload failed");
-    const storageId = storageUrl.split("/").pop() ?? "";
-    return create({
+    return dropService.create(userId, {
       kind: opts.kind,
-      storageId,
+      storagePath: path,
       contentType,
       fileName: opts.fileName,
     });
@@ -340,7 +337,7 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
                 try {
                   haptic("light");
                   if (share.url && !share.imageDataUrl) {
-                    const result = await create({ kind: "link", url: share.url });
+                    const result = await dropService.create(userId ?? "", { kind: "link", url: share.url });
                     finishOne(result);
                     close();
                     if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
@@ -357,7 +354,7 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
                     return;
                   }
                   if (share.text) {
-                    const result = await create({ kind: "note", text: share.text });
+                    const result = await dropService.create(userId ?? "", { kind: "note", text: share.text });
                     finishOne(result);
                     close();
                     if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);

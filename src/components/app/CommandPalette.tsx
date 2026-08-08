@@ -1,11 +1,11 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAction } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { searchService } from "@/lib/services";
 import {
   CalendarClock,
   FolderPlus,
@@ -45,11 +45,11 @@ export function CommandPalette({
   onQuickDrop: () => void;
 }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Array<{ _id: string; title: string; category: string; kind: string; savedAt: number }>>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState(0);
-  const searchDrops = useAction(api.search.searchDrops);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -97,8 +97,9 @@ export function CommandPalette({
     setSearching(true);
     timerRef.current = setTimeout(async () => {
       try {
-        const res = await searchDrops({ query: q, filters: { limit: 6 } });
-        setResults((res.results ?? []).map((r) => r.drop));
+        if (!user?.id) return;
+        const res = await searchService.searchDrops(user.id, q, { limit: 6 });
+        setResults(res.results.map((r) => r.drop));
       } catch {
         setResults([]);
       } finally {

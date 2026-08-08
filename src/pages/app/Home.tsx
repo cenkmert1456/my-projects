@@ -1,10 +1,10 @@
-import { api } from "@/convex/_generated/api";
 import { AddDropContext } from "@/components/app/AddDropContext";
 import { DropCard } from "@/components/drops/DropCard";
 import { SearchBar } from "@/components/search/SearchBar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery } from "convex/react";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService } from "@/lib/services";
 import { motion } from "framer-motion";
 import {
   CalendarClock,
@@ -33,21 +33,32 @@ export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { open: openAdd, openWithKind } = useContext(AddDropContext);
-  const recent = useQuery(api.drops.listRecent, { limit: 12 });
-  const upcoming = useQuery(api.drops.upcoming);
-  const allDrops = useQuery(api.drops.listAll, {});
+  const userId = user?.id;
+  const recent = useRealtimeQuery(
+    () => (userId ? dropService.listRecent(userId, 12) : Promise.resolve([])),
+    { table: "drops", userId },
+  );
+  const upcoming = useRealtimeQuery(
+    () => (userId ? dropService.upcoming(userId) : Promise.resolve([])),
+    { table: "drops", userId },
+  );
+  const allDrops = useRealtimeQuery(
+    () => (userId ? dropService.listAll(userId) : Promise.resolve([])),
+    { table: "drops", userId },
+  );
 
   const forYou = useMemo(() => {
-    if (!allDrops || allDrops.length < 3) return [];
+    const data = allDrops.data ?? [];
+    if (data.length < 3) return [];
     // Surface older, high-value items the user may have forgotten.
-    return allDrops
+    return data
       .filter((d) => d.status === "ready")
       .filter((d) => !d.starred && !d.archived)
       .sort((a, b) => a.savedAt - b.savedAt)
       .slice(0, 3);
-  }, [allDrops]);
+  }, [allDrops.data]);
 
-  if (!recent || !upcoming) {
+  if (!recent.data || !upcoming.data) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -97,7 +108,7 @@ export default function Home() {
       </div>
 
       {/* Upcoming strip */}
-      {upcoming.length > 0 && (
+      {upcoming.data.length > 0 && (
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-bold tracking-tight">
@@ -112,7 +123,7 @@ export default function Home() {
             </button>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-            {upcoming.slice(0, 6).map((drop) => (
+            {upcoming.data.slice(0, 6).map((drop) => (
               <motion.button
                 key={drop._id}
                 type="button"
@@ -153,11 +164,11 @@ export default function Home() {
             Inbox →
           </button>
         </div>
-        {recent.length === 0 ? (
+        {recent.data.length === 0 ? (
           <EmptyHome onAdd={openAdd} />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {recent.map((drop, i) => (
+            {recent.data.map((drop, i) => (
               <DropCard key={drop._id} drop={drop} index={i} />
             ))}
           </div>

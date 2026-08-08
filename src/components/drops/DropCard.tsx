@@ -1,6 +1,5 @@
-import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
-import { useQuery } from "convex/react";
+import type { Drop } from "@/lib/supabase/database.types";
+import { useStorageUrl } from "@/hooks/use-storage-url";
 import { motion } from "framer-motion";
 import { Star, Link2, FileText, StickyNote } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -9,14 +8,11 @@ import { formatPrice, timeAgo } from "@/lib/format";
 import { DropStatusBadge } from "./DropStatusBadge";
 import { cn } from "@/lib/utils";
 
-export function DropCard({ drop, index = 0 }: { drop: Doc<"drops">; index?: number }) {
+export function DropCard({ drop, index = 0 }: { drop: Drop; index?: number }) {
   const navigate = useNavigate();
-  const storageUrl = useQuery(
-    api.drops.getStorageUrl,
-    drop.storageId ? { storageId: drop.storageId } : "skip",
-  );
+  const storageUrl = useStorageUrl(drop.storagePath);
   const meta = CATEGORY_META[drop.category] ?? CATEGORY_META.Other;
-  const hasImage = Boolean(drop.storageId);
+  const hasImage = Boolean(drop.storagePath);
 
   return (
     <motion.button

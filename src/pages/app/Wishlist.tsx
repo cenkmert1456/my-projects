@@ -1,15 +1,21 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { dropService } from "@/lib/services";
 import { Heart, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { formatDate, formatPrice } from "@/lib/format";
 
 export default function Wishlist() {
-  const wishlist = useQuery(api.drops.wishlist);
+  const { user } = useAuth();
+  const uid = user?.id ?? null;
+  const { data: wishlist, loading } = useRealtimeQuery(
+    () => dropService.wishlist(uid as string),
+    { table: "drops", userId: uid },
+  );
   const navigate = useNavigate();
 
-  if (!wishlist) {
+  if (loading || !wishlist) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
