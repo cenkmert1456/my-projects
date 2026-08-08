@@ -275,6 +275,156 @@ the UI gates the free limit. To add billing, use the Vly payments gateway
 
 ---
 
+---
+
+## Mobile apps — Android & iOS (Capacitor)
+
+The same codebase ships as a **Web app**, an **Android app** and an **iOS app**.
+Capacitor 8 wraps the production web build (`webDir: dist`) with a native
+layer; the web app, PWA, backend, database and AI are untouched.
+
+```
+Web (PWA)   →  react-router + existing UI
+Android     →  Capacitor + Kotlin (share receiver, deep links, icons)
+iOS         →  Capacitor + Swift (share extension handoff, deep links, icons)
+Backend     →  the same Convex backend (one shared database)
+```
+
+### Native capabilities implemented
+
+| Feature | Implementation |
+| ------- | -------------- |
+| Share-to-DROP (Android) | `IncomingSharePlugin.java` — real `ACTION_SEND` intent filters for text/URL/image/file; opens the capture preview with the shared item |
+| Share-to-DROP (iOS) | `ios/ShareExtension/` — Share Extension (add target in Xcode once); handoff via `drop://share` handled in `SceneDelegate.swift` |
+| Camera & gallery | `@capacitor/camera` + `@capawesome/capacitor-file-picker` (multi-select) |
+| Voice notes | `@capacitor-community/media` not used — recorder uses MediaRecorder API; mic permission string present |
+| Local notifications | `@capacitor/local-notifications` — reminders, return deadlines, upcoming plans; tap → opens the Drop |
+| Push (architecture) | `@capacitor/push-notifications` registered + handled; requires APNs/FCM config in production |
+| Haptics | `@capacitor/haptics` — Drop saved, favorite, confirmations |
+| Biometric app lock | `@aparajita/capacitor-biometric-auth` — Face ID/Touch ID/Android Biometric; inactivity lock (immediate/1m/5m/15m) |
+| Secure storage | `@aparajita/capacitor-secure-storage` (Keychain / Keystore) for auth tokens + app-lock prefs |
+| Deep links | `drop://drop/123`, `drop://collection/abc`, `drop://ask`, `drop://search` |
+| Offline queue | `src/lib/mobile/upload-queue.ts` — queued captures flush when connectivity returns |
+| Safe areas / status bar / splash | `env(safe-area-inset-*)` everywhere, `@capacitor/status-bar`, `@capacitor/splash-screen` |
+| App icons & splash | Brand assets generated into both platforms by `@capacitor/assets` from `assets/logo.png` |
+
+### Requirements
+
+- **Node + Bun**, Android Studio (Android), **Xcode on macOS** (iOS).
+- iOS native builds, signing and TestFlight **require macOS** — this is an
+  Apple limitation, not DROP's. Android builds work on Windows/macOS/Linux.
+
+### Setup
+
+```bash
+bun install
+export VITE_CONVEX_URL=…   # same URL the web app uses
+bun run build               # production web build → dist/
+npx cap sync                # copy web build + plugins into android/ & ios/
+```
+
+The native projects are already generated (`android/`, `ios/`) and include
+the custom native layer. Production builds load the bundled `dist/` over the
+`https://` scheme — **no localhost URL dependency**.
+
+### Commands
+
+| Command | What it does |
+| ------- | ------------ |
+| `bun run mobile:sync` | build + `cap sync` (both platforms) |
+| `bun run mobile:android` / `mobile:ios` | build + sync one platform |
+| `bun run mobile:open:android` / `mobile:open:ios` | open Android Studio / Xcode |
+| `bun run mobile:assets` | regenerate icons & splash from `assets/logo.png` |
+| `bun run build:android` | **debug APK** (`android/app/build/outputs/apk/debug/`) |
+| `bun run build:android:release` | **release AAB** (needs signing config below) |
+| `bun run build:ios` | build the iOS app for the simulator |
+
+### Android — debug APK & release AAB
+
+```bash
+bun run build:android            # debug APK (local testing)
+bun run build:android:release    # signed release AAB (Play) + APK
+```
+
+For the release build, create a keystore and point Gradle at it in
+`android/app/build.gradle` under `signingConfigs` / `buildTypes.release`:
+
+```bash
+keytool -genkey -v -keystore drop-release.keystore -alias drop -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Then configure `release` signing (storeFile, storePassword, keyAlias,
+keyPassword) and set `versionCode`/`versionName` in
+`android/app/build.gradle` (default `versionCode 1`, `versionName "1.0.0"`).
+Upload the `.aab` to **Play Console → Internal testing → Production**.
+
+> Debug builds are signed with the debug keystore automatically — nothing to
+> configure for local testing.
+
+### iOS — Xcode, TestFlight, App Store
+
+```bash
+bun run mobile:open:ios     # opens Xcode
+```
+
+In Xcode: select the **App** target → Signing & Capabilities → set your
+**Team** and a unique **Bundle Identifier** (default `com.drop.memory`). Then:
+
+- Run on simulator: `⌘R` with an iPhone simulator selected.
+- Run on a device: plug in, set the device, fix any signing prompt.
+- Archive: Product → Archive, then distribute to **TestFlight** or **App Store**.
+
+Before submission:
+
+- **Bundle ID** must match a registered identifier in your Apple Developer
+  account; create an App ID in App Store Connect.
+- **Privacy descriptions** are already in `ios/App/App/Info.plist` (camera,
+  photos, microphone, notifications) — review the wording for your listing.
+- **App Icons**: generated into `Assets.xcassets/AppIcon.appiconset`; upload
+  a 1024×1024 marketing icon in App Store Connect.
+- **Push notifications** need an APNs key in App Store Connect + FCM/APNs
+  wiring (see below).
+- **Universal Links / Associated Domains**: add the domain + apple-app-site-
+  association file on your server if you want `https://` links to open the
+  app. Deep links work today via the `drop://` scheme.
+- **Share Extension**: add the target once in Xcode (see
+  `ios/ShareExtension/README.md`) — required for iOS share-to-DROP.
+
+### Permissions model
+
+All permissions are requested **contextually, never at startup**: camera when
+you tap Take Photo, photos when you pick images, microphone when you record a
+voice note, notifications when you create your first reminder, biometrics
+when you enable App Lock. Each request explains why it's needed.
+
+### Push notifications (production)
+
+`@capacitor/push-notifications` is installed and wired. Production push
+requires: **Firebase Cloud Messaging** (Android) and **APNs** (iOS), plus
+server-side delivery. Local notifications (reminders, deadlines) work fully
+out of the box with no external service.
+
+### Subscriptions on mobile
+
+Web billing stays on **Stripe**. For the stores: iOS must use **StoreKit / App
+Store In-App Purchase** and Android **Google Play Billing** (store policy).
+The plan/limit architecture reads from the Convex `plans` table, so a native
+purchase flow can grant entitlements server-side without changing the product
+logic. Store billing is **not faked** — no placeholder purchase buttons;
+when you're ready, implement the native purchase flow per platform and
+update `users.plan` via server-side receipt verification.
+
+### Mobile privacy
+
+- Drops are private by default; only the user's own account sees them.
+- App lock (biometrics) + optional privacy mode obscures the app preview in
+the app switcher on supported platforms.
+- Auth tokens live in secure device storage (Keychain/Keystore) when native.
+- Offline captures are stored locally until the user's own upload runs;
+  nothing is shared.
+
+---
+
 ## Deployment
 
 The platform manages the dev server and Convex push. For production:

@@ -61,6 +61,7 @@ import { CATEGORIES } from "@/convex/lib/constants";
 import { CATEGORY_META, ENTITY_LABELS, KIND_META, SOURCE_META } from "@/lib/drop-meta";
 import { formatDate, formatDateTime, formatPrice, hostOf } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { haptic, requestNotificationPermission, scheduleLocalNotification, cancelLocalNotification } from "@/lib/mobile/native";
 
 export default function DropDetail() {
   const { id } = useParams<{ id: string }>();
@@ -144,7 +145,35 @@ export default function DropDetail() {
       },
     });
     setEditing(false);
+    haptic("success");
     toast("Saved");
+  };
+
+  /** Create a reminder AND schedule a local notification (with permission
+   *  requested contextually the first time a reminder is created). */
+  const handleCreateReminder = async (t: string, at: number) => {
+    const result = await createReminder({ dropId: drop._id, text: t, remindAt: at });
+    haptic("success");
+    if (result) {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        const nid = Number(BigInt.asIntN(32, BigInt("0x" + String(result).replace(/[^0-9a-f]/gi, "").slice(-8).padStart(8, "0") || "1")));
+        await scheduleLocalNotification({
+          id: Math.abs(nid) || 1,
+          title: "DROP reminder",
+          body: t,
+          at,
+          extra: { dropId: String(drop._id) },
+        });
+      }
+    }
+    return result;
+  };
+
+  const handleCompleteReminder = async (r: { _id: string }) => {
+    await completeReminder({ id: r._id as never });
+    cancelLocalNotification(Number(BigInt.asIntN(32, BigInt("0x" + String(r._id).replace(/[^0-9a-f]/gi, "").slice(-8).padStart(8, "0") || "1"))));
+    haptic("light");
   };
 
   const handleTrash = async () => {
@@ -298,7 +327,10 @@ export default function DropDetail() {
               variant="outline"
               size="sm"
               className={cn("gap-1.5 rounded-xl", drop.starred && "border-amber-500/40 text-amber-600 dark:text-amber-300")}
-              onClick={() => void toggleStar({ id: drop._id })}
+              onClick={() => {
+                void toggleStar({ id: drop._id });
+                haptic(drop.starred ? "light" : "success");
+              }}
             >
               <Star className={cn("h-4 w-4", drop.starred && "fill-amber-400 text-amber-400")} />
               {drop.starred ? "Favorited" : "Favorite"}
@@ -606,7 +638,7 @@ export default function DropDetail() {
                   <p className="text-xs text-muted-foreground">{formatDateTime(r.remindAt)}</p>
                 </div>
                 {r.status === "pending" ? (
-                  <Button variant="outline" size="sm" onClick={() => void completeReminder({ id: r._id })}>
+                  <Button variant="outline" size="sm" onClick={() => void handleCompleteReminder(r)}>
                     Done
                   </Button>
                 ) : (
@@ -799,7 +831,7 @@ export default function DropDetail() {
         setText={setReminderText}
         at={reminderAt}
         setAt={setReminderAt}
-        onCreate={(t, a) => createReminder({ dropId: drop._id, text: t, remindAt: a })}
+        onCreate={(t, a) => handleCreateReminder(t, a)}
       />
     </div>
   );

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DROP</string>
+    <string name="title_activity_main">DROP</string>
+    <string name="package_name">com.drop.memory</string>
+    <string name="custom_url_scheme">com.drop.memory</string>
+</resources>

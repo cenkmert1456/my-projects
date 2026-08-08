@@ -18,17 +18,24 @@ import {
   Settings,
   Trash2,
   UploadCloud,
+  WifiOff,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { AddDropContext } from "./AddDropContext";
-import { AddDropSheet } from "@/components/drops/AddDropSheet";
+import { AddDropContext, type SharePayload } from "./AddDropContext";
+import { AddDropSheet, type DropKindOption } from "@/components/drops/AddDropSheet";
+import { MobileCaptureSheet } from "@/components/drops/MobileCaptureSheet";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { CommandPalette } from "./CommandPalette";
 import { QuickDrop } from "./QuickDrop";
+import { AppLockOverlay } from "./AppLockOverlay";
 import { cn } from "@/lib/utils";
 import { useAddDrop } from "./AddDropContext";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useMobileApp } from "@/hooks/use-mobile-app";
+import { haptic, isNative } from "@/lib/mobile/native";
+import { appLockEnabled } from "@/lib/mobile/app-lock";
 import { api } from "@/convex/_generated/api";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
@@ -68,20 +75,60 @@ function ThemeToggle() {
 
 export default function AppShell() {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetKind, setSheetKind] = useState<"screenshot" | "image" | "link" | "note" | "document">("screenshot");
+  const [sheetKind, setSheetKind] = useState<DropKindOption>("screenshot");
+  const [mobileCaptureOpen, setMobileCaptureOpen] = useState(false);
+  const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const { user } = useAuth();
+  const { user, isAuthenticated, signOut } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const generateUploadUrl = useMutation(api.drops.generateUploadUrl);
   const create = useMutation(api.drops.create);
 
-  const openAdd = () => setSheetOpen(true);
-  const openAddWithKind = (kind: typeof sheetKind) => {
-    setSheetKind(kind);
-    setSheetOpen(true);
+  const { online, locked, setLocked, requestUnlock } = useMobileApp();
+
+  const openAdd = () => {
+    if (isMobile) {
+      setSharePayload(null);
+      setMobileCaptureOpen(true);
+    } else {
+      setSheetOpen(true);
+    }
   };
+  const openAddWithKind = (kind: DropKindOption) => {
+    if (isMobile) {
+      setSharePayload(null);
+      setMobileCaptureOpen(true);
+    } else {
+      setSheetKind(kind);
+      setSheetOpen(true);
+    }
+  };
+
+  // Incoming share (Android intent / cold start): open the capture preview.
+  useEffect(() => {
+    const onIncoming = (e: Event) => {
+      const detail = (e as CustomEvent<SharePayload>).detail;
+      if (!detail) return;
+      if (isMobile || isNative()) {
+        setSharePayload(detail);
+        setMobileCaptureOpen(true);
+      } else {
+        // Web fallback: pre-fill the desktop sheet.
+        if (detail.url) {
+          setSheetKind("link");
+          setSheetOpen(true);
+        } else if (detail.text) {
+          setSheetKind("note");
+          setSheetOpen(true);
+        }
+      }
+    };
+    window.addEventListener("drop:open-incoming-share", onIncoming);
+    return () => window.removeEventListener("drop:open-incoming-share", onIncoming);
+  }, [isMobile]);
 
   // Keyboard shortcuts: ⌘K command palette, ⌘⇧D quick drop, "/" search.
   useEffect(() => {
@@ -112,10 +159,11 @@ export default function AppShell() {
 
   // Command palette's "Drop something" action.
   useEffect(() => {
-    const open = () => setSheetOpen(true);
+    const open = () => openAdd();
     window.addEventListener("drop:open-add", open);
     return () => window.removeEventListener("drop:open-add", open);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
 
   // Global drag & drop: drop files anywhere to capture them.
   useEffect(() => {
@@ -155,6 +203,7 @@ export default function AppShell() {
             toast("You already saved this", { description: `“${result.title ?? "item"}” is already in your memory.` });
           }
         }
+        haptic("success");
         toast(files.length > 1 ? `Dropped ${files.length} items ✓` : "Dropped ✓", {
           description: "Saved instantly. DROP is understanding it now…",
         });
@@ -175,7 +224,7 @@ export default function AppShell() {
   }, [user, generateUploadUrl, create]);
 
   return (
-    <AddDropContext.Provider value={{ open: openAdd, openWithKind: openAddWithKind }}>
+    <AddDropContext.Provider value={{ open: openAdd, openWithKind: openAddWithKind, openWithShare: (p) => { setSharePayload(p); if (isMobile || isNative()) setMobileCaptureOpen(true); } }}>
       <div className="min-h-screen bg-background text-foreground">
         {/* Desktop sidebar */}
         <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border/80 bg-sidebar px-3 py-5 lg:flex">
@@ -184,7 +233,7 @@ export default function AppShell() {
           </button>
 
           <div className="mt-6 px-2">
-            <Button className="w-full gap-2 rounded-2xl py-5 text-[15px] font-semibold shadow-none" onClick={openAdd}>
+            <Button className="w-full gap-2 rounded-2xl py-5 text-[15px] font-semibold shadow-none" onClick={() => { haptic("light"); openAdd(); }}>
               <Plus className="h-4 w-4" strokeWidth={3} />
               Drop Something
             </Button>
@@ -259,7 +308,7 @@ export default function AppShell() {
         </aside>
 
         {/* Mobile top bar */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border/70 bg-background/85 px-4 py-3 backdrop-blur-md lg:hidden">
+        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border/70 bg-background/85 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-md lg:hidden">
           <button type="button" onClick={() => navigate("/")} className="flex items-center gap-2">
             <Logo />
           </button>
@@ -280,8 +329,16 @@ export default function AppShell() {
           </div>
         </header>
 
+        {/* Offline banner */}
+        {!online && (
+          <div className="sticky top-0 z-[60] flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-xs font-semibold text-amber-700 backdrop-blur-md dark:text-amber-300 lg:top-0">
+            <WifiOff className="h-3.5 w-3.5" />
+            You're offline — new Drops will be queued and saved automatically when you're back online.
+          </div>
+        )}
+
         {/* Main content */}
-        <main className="pb-24 lg:pb-10 lg:pl-60">
+        <main className={cn("pb-24 lg:pb-10 lg:pl-60", online ? "" : "pt-0")}>
           <div className="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6 lg:px-10">
             <Outlet />
           </div>
@@ -295,7 +352,7 @@ export default function AppShell() {
             <div className="flex justify-center">
               <button
                 type="button"
-                onClick={openAdd}
+                onClick={() => { haptic("light"); openAdd(); }}
                 aria-label="Drop something"
                 className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-transform active:scale-95"
               >
@@ -322,6 +379,17 @@ export default function AppShell() {
 
         <AddDropSheet open={sheetOpen} onOpenChange={setSheetOpen} initialKind={sheetKind} />
 
+        {/* Mobile-native capture sheet */}
+        <MobileCaptureSheet
+          open={mobileCaptureOpen}
+          onOpenChange={setMobileCaptureOpen}
+          share={sharePayload}
+          onOpenAdvanced={(kind) => {
+            setSheetKind(kind);
+            setSheetOpen(true);
+          }}
+        />
+
         <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} onQuickDrop={() => setQuickOpen(true)} />
         <QuickDrop open={quickOpen} onOpenChange={setQuickOpen} />
 
@@ -329,6 +397,22 @@ export default function AppShell() {
             visibility + exit animation, so AnimatePresence never gets
             unmounted mid-exit (which crashes React with a removeChild error). */}
         {user && <OnboardingOverlay />}
+
+        {/* Biometric app lock */}
+        {locked && (
+          <AppLockOverlay
+            onUnlock={async () => {
+              const ok = await requestUnlock();
+              if (!ok) {
+                toast("Couldn't verify identity", { description: "Try again, or sign back in." });
+              }
+            }}
+            onFallback={() => {
+              setLocked(false);
+              void signOut().then(() => navigate("/auth?returnTo=%2Fapp"));
+            }}
+          />
+        )}
       </div>
     </AddDropContext.Provider>
   );

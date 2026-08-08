@@ -8,6 +8,7 @@ import {
   Check,
   Cpu,
   Download,
+  Fingerprint,
   Globe,
   Loader2,
   Lock,
@@ -15,9 +16,11 @@ import {
   RefreshCw,
   Search,
   Shield,
+  Smartphone,
   Sparkles,
   Sun,
   Trash2,
+  Wifi,
   X,
   Zap,
 } from "lucide-react";
@@ -26,6 +29,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { isNative } from "@/lib/mobile/platform";
+import { biometricsAvailable } from "@/lib/mobile/native";
+import { setAppLockDelay, setAppLockEnabled, type LockDelay } from "@/lib/mobile/app-lock";
 
 type AIHealth = {
   ok: boolean;
@@ -48,6 +54,10 @@ export default function Settings() {
   const checkAI = useAction(api.aiHealth.checkAI);
   const [health, setHealth] = useState<AIHealth | null>(null);
   const [checking, setChecking] = useState(false);
+  const [appLockOn, setAppLockOn] = useState(false);
+  const [lockDelay, setLockDelay] = useState<LockDelay>("immediate");
+  const [biometricOk, setBiometricOk] = useState(false);
+  const [wifiOnly, setWifiOnly] = useState(false);
 
   const runHealthCheck = async () => {
     setChecking(true);
@@ -69,6 +79,15 @@ export default function Settings() {
 
   useEffect(() => {
     void runHealthCheck();
+    void (async () => {
+      const { appLockEnabled, loadAppLockSettings } = await import("@/lib/mobile/app-lock");
+      await loadAppLockSettings();
+      setAppLockOn(appLockEnabled());
+      setBiometricOk(await biometricsAvailable());
+      const { secureGet } = await import("@/lib/mobile/native");
+      setWifiOnly((await secureGet("wifiOnlyUploads")) === "1");
+      setLockDelay(((await secureGet("appLockDelay")) as LockDelay | null) ?? "immediate");
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
