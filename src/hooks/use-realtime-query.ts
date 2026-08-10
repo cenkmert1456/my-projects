@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/supabase/auth-errors";
 import { withTimeout } from "@/lib/supabase/errors";
 
 export interface RealtimeQueryOptions {
-  /** Table to subscribe to (drops, collections, stacks, reminders, …). */
+  /** Table the data comes from — kept for API compatibility. */
   table: string;
-  /** Owner id — used both for the RLS-scoped subscription filter and as a dep. */
+  /** Owner id — when absent the query settles immediately (never spins). */
   userId?: string | null;
-  /** Optional primary key filter (e.g. a single drop) — null = all owned rows. */
+  /** Optional primary key filter (e.g. a single drop) — kept for compatibility. */
   rowId?: string | null;
 }
 
@@ -23,11 +22,13 @@ export interface RealtimeQueryResult<T> {
 }
 
 /**
- * Reactive data hook — the useQuery replacement.
+ * Plain Supabase query hook — the useQuery replacement.
  *
- * Fetches through the provided fetcher (wrapped in a 12s timeout so a dead
- * network can never leave a screen spinning), then subscribes to Supabase
- * Realtime (postgres_changes) for the given table, scoped to the owner.
+ * Deliberately has NO realtime channels: Realtime is an optional enhancement
+ * provided by `useRealtimeSync`, which refetches through this hook's refetch.
+ * Fetch-on-mount + manual refresh means the app can never be blocked or
+ * crashed by a Realtime subscription — if realtime is unavailable, screens
+ * still load and render normally.
  *
  * State contract (screens should render all four explicitly):
  *   - data === undefined && loading  → INITIAL_LOADING (skeleton)
@@ -39,7 +40,7 @@ export function useRealtimeQuery<T>(
   fetcher: () => Promise<T>,
   options: RealtimeQueryOptions,
 ): RealtimeQueryResult<T> {
-  const { table, userId, rowId } = options;
+  const { userId } = options;
   const [data, setData] = useState<T | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,22 +81,6 @@ export function useRealtimeQuery<T>(
       cancelled = true;
     };
   }, [userId, tick]);
-
-  useEffect(() => {
-    if (!userId) return;
-    const filter = rowId ? `id=eq.${rowId}` : `user_id=eq.${userId}`;
-    const channel = supabase
-      .channel(`drop-realtime-${table}-${userId}-${rowId ?? "all"}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table, filter },
-        () => setTick((t) => t + 1),
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [table, userId, rowId]);
 
   return { data, loading, error, refetch };
 }

@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "Opnieuw proberen", cancel: "Annuleren", save: "Opslaan", done: "Klaar", back: "Terug",
     next: "Volgende", skip: "Overslaan", close: "Sluiten", delete: "Verwijderen", search: "Zoeken",
-    settings: "Instellingen", offline: "Je bent offline", refresh: "Vernieuwen",
+    settings: "Instellingen", offline: "Je bent offline", refresh: "Vernieuwen", review: "Bekijken",
   },
   nav: {
     home: "Home", search: "Zoeken", saved: "Opgeslagen", you: "Jij", drop: "Opslaan",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "Je geheugen begint hier",
     emptyDesc: "Sla een screenshot, product, plek, document of gedachte op. DROP begrijpt het automatisch — en vindt het later terug.",
     addFirst: "Voeg je eerste DROP toe",
+    synced: "Gesynchroniseerd",
     offlineBanner: "Je bent offline — nieuwe DROPs worden in de wachtrij gezet en automatisch opgeslagen zodra je weer online bent.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "Je geheugen laden…", nothingSaved: "Nog niets opgeslagen.",
     nothingSavedDesc: "Je favoriete herinneringen verschijnen hier.", errorLoading: "Je geheugen kon niet worden geladen.",
-    emptySearch: "Zoek in alles wat je hebt opgeslagen.", noResults: "Geen resultaten gevonden.",
+    emptySearch: "Zoek in alles wat je hebt opgeslagen.", noResults: "Geen resultaten gevonden.", reviewHeader: "Help DROP deze te begrijpen", failedDesc: "Analyse niet afgerond. Je Drop is veilig — probeer het opnieuw.", reviewDesc: "DROP was niet helemaal zeker. Bekijk of pas aan.",
   },
   search: {
     title: "Zoek in je geheugen", subtitle: "Vaag is prima. DROP zoekt naar betekenis, niet alleen woorden.",

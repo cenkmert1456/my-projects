@@ -36,7 +36,7 @@ export default {
     search: "Search",
     settings: "Settings",
     offline: "You're offline",
-    refresh: "Refresh",
+    refresh: "Refresh", review: "Review",
   },
   nav: {
     home: "Home",
@@ -72,6 +72,7 @@ export default {
     emptyDesc:
       "Save a screenshot, product, place, document or thought. DROP understands it automatically — and finds it later.",
     addFirst: "Add your first DROP",
+    synced: "Synced",
     offlineBanner:
       "You're offline — new Drops are queued and saved automatically when you're back online.",
   },
@@ -155,7 +156,7 @@ export default {
     nothingSavedDesc: "Your favorite memories will appear here.",
     errorLoading: "Couldn't load your memory.",
     emptySearch: "Search everything you've dropped.",
-    noResults: "No matches found.",
+    noResults: "No matches found.", reviewHeader: "Help DROP understand these", failedDesc: "Analysis couldn't finish. Your Drop is safe — retry anytime.", reviewDesc: "DROP wasn't fully sure about this one. Review or adjust it.",
   },
   search: {
     title: "Search your memory",

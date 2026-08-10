@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "Tentar novamente", cancel: "Cancelar", save: "Salvar", done: "Concluído", back: "Voltar",
     next: "Avançar", skip: "Pular", close: "Fechar", delete: "Excluir", search: "Buscar",
-    settings: "Ajustes", offline: "Você está offline", refresh: "Atualizar",
+    settings: "Ajustes", offline: "Você está offline", refresh: "Atualizar", review: "Revisar",
   },
   nav: {
     home: "Início", search: "Buscar", saved: "Salvos", you: "Você", drop: "Guardar",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "Sua memória começa aqui",
     emptyDesc: "Salve uma captura, um produto, um lugar, um documento ou uma ideia. O DROP entende sozinho — e encontra depois.",
     addFirst: "Adicionar seu primeiro DROP",
+    synced: "Sincronizado",
     offlineBanner: "Você está offline — novos DROPs entram na fila e são salvos automaticamente quando você voltar.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "Carregando sua memória…", nothingSaved: "Nada salvo ainda.",
     nothingSavedDesc: "Suas memórias favoritas aparecerão aqui.", errorLoading: "Não foi possível carregar sua memória.",
-    emptySearch: "Busque em tudo que você guardou.", noResults: "Nenhum resultado encontrado.",
+    emptySearch: "Busque em tudo que você guardou.", noResults: "Nenhum resultado encontrado.", reviewHeader: "Ajude o DROP a entender", failedDesc: "Análise não concluída. Seu Drop está seguro — tente de novo quando quiser.", reviewDesc: "O DROP não tinha certeza total. Revise ou ajuste.",
   },
   search: {
     title: "Buscar na sua memória", subtitle: "Vago não é problema. O DROP busca significado, não só palavras.",

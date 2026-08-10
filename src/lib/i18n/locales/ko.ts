@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "다시 시도", cancel: "취소", save: "저장", done: "완료", back: "뒤로", next: "다음",
     skip: "건너뛰기", close: "닫기", delete: "삭제", search: "검색", settings: "설정",
-    offline: "오프라인 상태입니다", refresh: "새로고침",
+    offline: "오프라인 상태입니다", refresh: "새로고침", review: "검토",
   },
   nav: {
     home: "홈", search: "검색", saved: "저장됨", you: "내 정보", drop: "저장",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "당신의 기억은 여기서 시작됩니다",
     emptyDesc: "스크린샷, 제품, 장소, 문서, 생각을 저장하세요. DROP이 자동으로 이해하고 — 나중에 찾아드립니다.",
     addFirst: "첫 DROP 추가하기",
+    synced: "동기화됨",
     offlineBanner: "오프라인 상태입니다 — 새 DROP은 대기열에 쌓였다가 연결되면 자동으로 저장됩니다.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "기억을 불러오는 중…", nothingSaved: "아직 저장된 것이 없습니다.",
     nothingSavedDesc: "좋아하는 기억이 여기에 표시됩니다.", errorLoading: "기억을 불러올 수 없습니다.",
-    emptySearch: "저장한 모든 것을 검색하세요.", noResults: "일치하는 결과가 없습니다.",
+    emptySearch: "저장한 모든 것을 검색하세요.", noResults: "일치하는 결과가 없습니다.", reviewHeader: "DROP이 이해하도록 도와주세요", failedDesc: "분석을 완료하지 못했습니다. Drop은 안전합니다 — 언제든 다시 시도하세요.", reviewDesc: "DROP이 완전히 확신하지 못했습니다. 검토하거나 조정하세요.",
   },
   search: {
     title: "내 기억 검색", subtitle: "모호해도 괜찮아요. DROP은 단어가 아닌 의미를 검색합니다.",

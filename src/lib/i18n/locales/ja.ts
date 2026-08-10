@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "再試行", cancel: "キャンセル", save: "保存", done: "完了", back: "戻る", next: "次へ",
     skip: "スキップ", close: "閉じる", delete: "削除", search: "検索", settings: "設定",
-    offline: "オフラインです", refresh: "更新",
+    offline: "オフラインです", refresh: "更新", review: "確認",
   },
   nav: {
     home: "ホーム", search: "検索", saved: "保存済み", you: "あなた", drop: "保存",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "あなたの記憶はここから始まります",
     emptyDesc: "スクリーンショット、商品、場所、書類、考えを保存。DROPが自動で理解し、後から見つけてくれます。",
     addFirst: "最初のDROPを追加",
+    synced: "同期済み",
     offlineBanner: "オフラインです — 新しいDROPはキューに入り、接続が戻ると自動保存されます。",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "記憶を読み込み中…", nothingSaved: "まだ何も保存されていません。",
     nothingSavedDesc: "お気に入りの記憶がここに表示されます。", errorLoading: "記憶を読み込めませんでした。",
-    emptySearch: "保存したすべてを検索できます。", noResults: "一致するものはありません。",
+    emptySearch: "保存したすべてを検索できます。", noResults: "一致するものはありません。", reviewHeader: "DROP がこれらを理解できるよう助ける", failedDesc: "分析を完了できませんでした。Drop は安全です — いつでも再試行できます。", reviewDesc: "DROP は確信が持てませんでした。確認または調整してください。",
   },
   search: {
     title: "記憶を検索", subtitle: "曖昧でも大丈夫。DROPは言葉だけでなく意味を探します。",

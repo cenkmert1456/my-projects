@@ -340,12 +340,15 @@ export default function AppShell() {
           </div>
         </main>
 
-        {/* Mobile bottom navigation — Home · Search · DROP · Saved · You */}
+        {/* Mobile bottom navigation — Home · Search · DROP · Saved · You.
+            The center DROP action is an elegant raised accent that lives
+            INSIDE the bar (not a giant floating circle) — subtle ring, gentle
+            lift, no visual dominance. */}
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
-          <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pb-1 pt-1.5">
+          <div className="mx-auto grid max-w-md grid-cols-5 items-center px-2 pt-1">
             <MobileNavItem to="/app" label={t("nav.home")} icon={Home} end />
             <MobileNavItem to="/app/search" label={t("nav.search")} icon={Search} />
-            <div className="flex flex-col items-center justify-end">
+            <div className="flex flex-col items-center justify-center">
               <button
                 type="button"
                 onClick={() => {
@@ -353,10 +356,11 @@ export default function AppShell() {
                   openAdd();
                 }}
                 aria-label={t("nav.drop")}
-                className="-mt-7 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 ring-4 ring-background transition-transform active:scale-90"
+                className="-mt-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25 ring-[3px] ring-background transition-all active:scale-90"
               >
-                <Plus className="h-6 w-6" strokeWidth={2.5} />
+                <Plus className="h-5 w-5" strokeWidth={2.75} />
               </button>
+              <span className="mt-0.5 text-[10px] font-semibold text-primary">{t("nav.drop")}</span>
             </div>
             <MobileNavItem to="/app/inbox" label={t("nav.saved")} icon={Inbox} />
             <MobileNavItem to="/app/profile" label={t("nav.you")} icon={User} />

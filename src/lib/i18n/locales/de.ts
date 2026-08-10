@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "Erneut versuchen", cancel: "Abbrechen", save: "Speichern", done: "Fertig", back: "Zurück",
     next: "Weiter", skip: "Überspringen", close: "Schließen", delete: "Löschen", search: "Suchen",
-    settings: "Einstellungen", offline: "Du bist offline", refresh: "Aktualisieren",
+    settings: "Einstellungen", offline: "Du bist offline", refresh: "Aktualisieren", review: "Prüfen",
   },
   nav: {
     home: "Start", search: "Suchen", saved: "Gespeichert", you: "Du", drop: "Ablegen",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "Deine Erinnerung beginnt hier",
     emptyDesc: "Speichere einen Screenshot, ein Produkt, einen Ort, ein Dokument oder einen Gedanken. DROP versteht es automatisch — und findet es später.",
     addFirst: "Ersten DROP hinzufügen",
+    synced: "Synchronisiert",
     offlineBanner: "Du bist offline — neue Drops werden eingereiht und automatisch gespeichert, sobald du wieder online bist.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "Erinnerung wird geladen…", nothingSaved: "Noch nichts gespeichert.",
     nothingSavedDesc: "Deine Lieblingserinnerungen erscheinen hier.", errorLoading: "Erinnerung konnte nicht geladen werden.",
-    emptySearch: "Durchsuche alles, was du abgelegt hast.", noResults: "Keine Treffer gefunden.",
+    emptySearch: "Durchsuche alles, was du abgelegt hast.", noResults: "Keine Treffer gefunden.", reviewHeader: "Hilf DROP, diese zu verstehen", failedDesc: "Analyse nicht abgeschlossen. Dein Drop ist sicher — jederzeit erneut versuchen.", reviewDesc: "DROP war sich hier nicht ganz sicher. Prüfen oder anpassen.",
   },
   search: {
     title: "Erinnerung durchsuchen", subtitle: "Vage ist in Ordnung. DROP sucht nach Bedeutung, nicht nur nach Wörtern.",

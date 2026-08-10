@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "Réessayer", cancel: "Annuler", save: "Enregistrer", done: "Terminé", back: "Retour",
     next: "Suivant", skip: "Passer", close: "Fermer", delete: "Supprimer", search: "Rechercher",
-    settings: "Réglages", offline: "Vous êtes hors ligne", refresh: "Actualiser",
+    settings: "Réglages", offline: "Vous êtes hors ligne", refresh: "Actualiser", review: "Vérifier",
   },
   nav: {
     home: "Accueil", search: "Recherche", saved: "Enregistrés", you: "Vous", drop: "Déposer",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "Votre mémoire commence ici",
     emptyDesc: "Enregistrez une capture, un produit, un lieu, un document ou une idée. DROP le comprend automatiquement — et le retrouve plus tard.",
     addFirst: "Ajouter votre premier DROP",
+    synced: "Synchronisé",
     offlineBanner: "Vous êtes hors ligne — les nouveaux DROPs sont mis en file et enregistrés automatiquement à votre retour en ligne.",
   },
   capture: {
@@ -68,7 +69,7 @@ export default {
   states: {
     loadingMemory: "Chargement de votre mémoire…", nothingSaved: "Rien d'enregistré pour l'instant.",
     nothingSavedDesc: "Vos souvenirs préférés apparaîtront ici.", errorLoading: "Impossible de charger votre mémoire.",
-    emptySearch: "Recherchez dans tout ce que vous avez déposé.", noResults: "Aucun résultat trouvé.",
+    emptySearch: "Recherchez dans tout ce que vous avez déposé.", noResults: "Aucun résultat trouvé.", reviewHeader: "Aidez DROP à comprendre", failedDesc: "Analyse inachevée. Votre Drop est en sécurité — réessayez à tout moment.", reviewDesc: "DROP n'était pas tout à fait sûr. Vérifiez ou ajustez.",
   },
   search: {
     title: "Rechercher dans votre mémoire", subtitle: "Le flou est permis. DROP cherche le sens, pas seulement les mots.",

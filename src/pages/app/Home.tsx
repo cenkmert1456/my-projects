@@ -4,6 +4,7 @@ import { EmptyState, ScreenSkeleton, StateError } from "@/components/app/DataSta
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { collectionService, dropService } from "@/lib/services";
 import { greetingKey } from "@/lib/format";
 import { useTranslation } from "react-i18next";
@@ -59,6 +60,20 @@ export default function Home() {
     { table: "drops", userId },
   );
 
+  // Realtime is an optional enhancement — it only triggers a refetch when a
+  // change arrives. Home renders from the normal queries regardless, so a
+  // realtime outage can never block or crash the screen. `live` powers a
+  // subtle sync indicator only.
+  const realtime = useRealtimeSync(
+    userId ? { table: "drops", userId } : null,
+    () => {
+      recent.refetch();
+      upcoming.refetch();
+      collections.refetch();
+      allDrops.refetch();
+    },
+  );
+
   const forYou = useMemo(() => {
     const data = allDrops.data ?? [];
     if (data.length < 3) return [];
@@ -84,15 +99,23 @@ export default function Home() {
             {t("home.searchBig")}
           </h1>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate("/app/profile")}
-          className="relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary/15 text-base font-bold text-primary transition-transform active:scale-95"
-          aria-label={t("nav.you")}
-        >
-          {(user?.name ?? user?.email ?? "D")[0]?.toUpperCase()}
-          <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full border-2 border-background bg-emerald-500" />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {realtime.active && (
+            <span className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {t("home.synced")}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate("/app/profile")}
+            className="relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary/15 text-base font-bold text-primary transition-transform active:scale-95"
+            aria-label={t("nav.you")}
+          >
+            {(user?.name ?? user?.email ?? "D")[0]?.toUpperCase()}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full border-2 border-background bg-emerald-500" />
+          </button>
+        </div>
       </div>
 
       {/* Big search field — the product promise */}

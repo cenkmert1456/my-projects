@@ -1,7 +1,5 @@
-import "@vly-ai/integrations";
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
-import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { AuthCallbackHandler } from "@/components/auth/AuthCallbackHandler";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { ThemeProvider } from "next-themes";
@@ -42,9 +40,14 @@ function RouteLoading() {
   );
 }
 
-/** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
- *  crashing the whole app (e.g. hook errors in WebContainer environment). */
-class ToolbarErrorBoundary extends React.Component<
+/**
+ * Production-safe error boundary.
+ *
+ * Never shows developer/preview text. A runtime error is logged and the user
+ * sees a minimal brand fallback with a working "reload" action — the app is
+ * never a blank page, and no preview/debug overlay ships to end users.
+ */
+class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
 > {
@@ -53,43 +56,63 @@ class ToolbarErrorBoundary extends React.Component<
     return { hasError: true };
   }
   componentDidCatch(err: Error) {
-    console.warn("[VlyToolbar] Caught error, toolbar disabled:", err.message);
-  }
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
-}
-
-/** Hard guard so runtime errors never leave the preview as a blank page. */
-class RootErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; message: string; stack: string }
-> {
-  state = { hasError: false, message: "", stack: "" };
-  static getDerivedStateFromError(error: Error) {
-    return {
-      hasError: true,
-      message: error.message || "Unknown runtime error",
-      stack: error.stack || "",
-    };
-  }
-  componentDidCatch(err: Error) {
-    console.error("[WebContainer preview] Root crash:", err);
+    console.error("[DROP] Runtime error caught:", err);
   }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
-          <div className="max-w-lg text-center">
-            <p className="text-sm font-semibold">Preview runtime error</p>
-            <p className="mt-2 text-xs text-muted-foreground break-words">
-              {this.state.message}
+        <div
+          style={{
+            minHeight: "100vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--background)",
+            color: "var(--foreground)",
+            padding: 24,
+            fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+          }}
+        >
+          <div style={{ textAlign: "center", maxWidth: 320 }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                margin: "0 auto 16px",
+                borderRadius: 16,
+                background: "var(--primary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 24,
+                fontWeight: 800,
+                color: "#fff",
+              }}
+            >
+              D
+            </div>
+            <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>
+              Something went wrong
             </p>
-            {this.state.stack && (
-              <pre className="mt-3 text-left text-[10px] leading-4 text-muted-foreground/80 max-h-40 overflow-auto rounded border border-border/60 p-2">
-                {this.state.stack}
-              </pre>
-            )}
+            <p style={{ fontSize: 13, color: "var(--muted-foreground)", margin: "0 0 16px" }}>
+              Your memory is safe. Please reopen DROP.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 12,
+                border: "none",
+                background: "var(--primary)",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Reload
+            </button>
           </div>
         </div>
       );
@@ -97,8 +120,6 @@ class RootErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-
-
 
 function RouteSyncer() {
   const location = useLocation();
@@ -110,33 +131,17 @@ function RouteSyncer() {
     if (el) el.remove();
   }, []);
 
+  // Keep the document title in sync with the active screen.
   useEffect(() => {
-    window.parent.postMessage(
-      { type: "iframe-route-change", path: location.pathname },
-      "*",
-    );
+    document.title = "DROP — Everything you save. Finally searchable.";
   }, [location.pathname]);
-
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (event.data?.type === "navigate") {
-        if (event.data.direction === "back") window.history.back();
-        if (event.data.direction === "forward") window.history.forward();
-      }
-    }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
 
   return null;
 }
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <RootErrorBoundary>
-      <ToolbarErrorBoundary>
-        <VlyToolbar />
-      </ToolbarErrorBoundary>
+    <AppErrorBoundary>
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
         <AuthProvider>
           <BrowserRouter>
@@ -181,6 +186,6 @@ createRoot(document.getElementById("root")!).render(
           <Toaster />
         </AuthProvider>
       </ThemeProvider>
-    </RootErrorBoundary>
+    </AppErrorBoundary>
   </StrictMode>,
 );

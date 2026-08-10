@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from "./client";
 import { storageAdapterReady } from "./storage-adapter";
 import type { Profile } from "./database.types";
 import { profileService } from "@/lib/services/profile";
+import { removeAllRealtimeChannels } from "@/lib/realtime-manager";
 import { authErrorMessage } from "./auth-errors";
 import { withTimeout } from "./errors";
 import { isNative } from "@/lib/mobile/platform";
@@ -305,6 +306,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await supabase.auth.signOut();
     } finally {
+      // Tear down every realtime channel for this session — no orphaned
+      // subscriptions may survive a logout or user switch.
+      removeAllRealtimeChannels();
       setUser(null);
       setIsAuthenticated(false);
       setStartupState("UNAUTHENTICATED");

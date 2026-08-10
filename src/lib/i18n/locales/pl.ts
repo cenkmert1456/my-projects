@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "Spróbuj ponownie", cancel: "Anuluj", save: "Zapisz", done: "Gotowe", back: "Wstecz",
     next: "Dalej", skip: "Pomiń", close: "Zamknij", delete: "Usuń", search: "Szukaj",
-    settings: "Ustawienia", offline: "Jesteś offline", refresh: "Odśwież",
+    settings: "Ustawienia", offline: "Jesteś offline", refresh: "Odśwież", review: "Przejrzyj",
   },
   nav: {
     home: "Start", search: "Szukaj", saved: "Zapisane", you: "Ty", drop: "Zapisz",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "Twoja pamięć zaczyna się tutaj",
     emptyDesc: "Zapisz zrzut ekranu, produkt, miejsce, dokument lub myśl. DROP zrozumie to automatycznie — i znajdzie później.",
     addFirst: "Dodaj swój pierwszy DROP",
+    synced: "Zsynchronizowano",
     offlineBanner: "Jesteś offline — nowe DROPy zostaną w kolejce i zapiszą się automatycznie, gdy wrócisz do sieci.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "Ładowanie pamięci…", nothingSaved: "Nic jeszcze nie zapisano.",
     nothingSavedDesc: "Twoje ulubione wspomnienia pojawią się tutaj.", errorLoading: "Nie udało się załadować pamięci.",
-    emptySearch: "Szukaj we wszystkim, co zapisałeś.", noResults: "Nie znaleziono wyników.",
+    emptySearch: "Szukaj we wszystkim, co zapisałeś.", noResults: "Nie znaleziono wyników.", reviewHeader: "Pomóż DROP je zrozumieć", failedDesc: "Analiza nie została ukończona. Twój Drop jest bezpieczny — spróbuj ponownie.", reviewDesc: "DROP nie był do końca pewien. Przejrzyj lub dostosuj.",
   },
   search: {
     title: "Szukaj w swojej pamięci", subtitle: "Niejasne jest w porządku. DROP szuka znaczenia, nie tylko słów.",

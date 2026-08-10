@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "إعادة المحاولة", cancel: "إلغاء", save: "حفظ", done: "تم", back: "رجوع", next: "التالي",
     skip: "تخطي", close: "إغلاق", delete: "حذف", search: "بحث", settings: "الإعدادات",
-    offline: "أنت غير متصل", refresh: "تحديث",
+    offline: "أنت غير متصل", refresh: "تحديث", review: "مراجعة",
   },
   nav: {
     home: "الرئيسية", search: "بحث", saved: "المحفوظات", you: "أنت", drop: "حفظ",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "ذاكرتك تبدأ من هنا",
     emptyDesc: "احفظ لقطة شاشة أو منتجًا أو مكانًا أو مستندًا أو فكرة. DROP يفهمها تلقائيًا — ويجدها لاحقًا.",
     addFirst: "أضف أول DROP",
+    synced: "مُتزامن",
     offlineBanner: "أنت غير متصل — سيتم وضع العناصر الجديدة في قائمة الانتظار وحفظها تلقائيًا عند عودة الاتصال.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "جارٍ تحميل ذاكرتك…", nothingSaved: "لا شيء محفوظ بعد.",
     nothingSavedDesc: "ستظهر ذكرياتك المفضلة هنا.", errorLoading: "تعذّر تحميل ذاكرتك.",
-    emptySearch: "ابحث في كل ما حفظته.", noResults: "لا توجد نتائج مطابقة.",
+    emptySearch: "ابحث في كل ما حفظته.", noResults: "لا توجد نتائج مطابقة.", reviewHeader: "ساعد DROP على فهم هذه", failedDesc: "لم يكتمل التحليل. عنصرك آمن — أعد المحاولة في أي وقت.", reviewDesc: "لم يكن DROP متأكداً تماماً. راجِع أو عدّل.",
   },
   search: {
     title: "ابحث في ذاكرتك", subtitle: "الغموض مقبول. DROP يبحث عن المعنى، وليس الكلمات فقط.",

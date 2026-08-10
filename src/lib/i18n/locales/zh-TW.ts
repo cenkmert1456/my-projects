@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "重試", cancel: "取消", save: "儲存", done: "完成", back: "返回", next: "下一步",
     skip: "略過", close: "關閉", delete: "刪除", search: "搜尋", settings: "設定",
-    offline: "你已離線", refresh: "重新整理",
+    offline: "你已離線", refresh: "重新整理", review: "查看",
   },
   nav: {
     home: "首頁", search: "搜尋", saved: "已儲存", you: "我的", drop: "儲存",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "你的記憶從這裡開始",
     emptyDesc: "儲存截圖、商品、地點、文件或想法。DROP 會自動理解——並在之後幫你找到。",
     addFirst: "新增第一個 DROP",
+    synced: "已同步",
     offlineBanner: "你已離線——新的 DROP 會進入佇列，連線後自動儲存。",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "正在載入你的記憶…", nothingSaved: "還沒有儲存任何內容。",
     nothingSavedDesc: "你喜歡的記憶會顯示在這裡。", errorLoading: "無法載入你的記憶。",
-    emptySearch: "搜尋你儲存的所有內容。", noResults: "找不到相符結果。",
+    emptySearch: "搜尋你儲存的所有內容。", noResults: "找不到相符結果。", reviewHeader: "幫助 DROP 理解這些", failedDesc: "分析未完成。你的內容很安全 — 隨時可以重試。", reviewDesc: "DROP 對此不完全確定。請檢查或調整。",
   },
   search: {
     title: "搜尋你的記憶", subtitle: "模糊也沒關係。DROP 搜尋的是含義，而不只是關鍵字。",

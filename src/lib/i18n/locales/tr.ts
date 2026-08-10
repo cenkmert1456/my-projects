@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "Tekrar dene", cancel: "Vazgeç", save: "Kaydet", done: "Tamam", back: "Geri", next: "İleri",
     skip: "Atla", close: "Kapat", delete: "Sil", search: "Ara", settings: "Ayarlar", offline: "Çevrimdışısın",
-    refresh: "Yenile",
+    refresh: "Yenile", review: "İncele",
   },
   nav: {
     home: "Ana Sayfa", search: "Ara", saved: "Kayıtlı", you: "Sen", drop: "Bırak", inbox: "Gelen Kutusu",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "Hafızan burada başlıyor",
     emptyDesc: "Bir ekran görüntüsü, ürün, yer, belge veya düşünce kaydet. DROP onu otomatik anlar — ve sonra bulur.",
     addFirst: "İlk DROP'unu ekle",
+    synced: "Senkronize",
     offlineBanner: "Çevrimdışısın — yeni DROP'lar sıraya alınır ve bağlantı gelince otomatik kaydedilir.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "Hafızan yükleniyor…", nothingSaved: "Henüz bir şey kaydedilmedi.",
     nothingSavedDesc: "Favori anıların burada görünecek.", errorLoading: "Hafızan yüklenemedi.",
-    emptySearch: "Bıraktığın her şeyde ara.", noResults: "Eşleşme bulunamadı.",
+    emptySearch: "Bıraktığın her şeyde ara.", noResults: "Eşleşme bulunamadı.", reviewHeader: "DROP'un bunları anlamasına yardım et", failedDesc: "Analiz tamamlanamadı. DROP'un güvende — dilediğin zaman yeniden dene.", reviewDesc: "DROP bundan tam emin olamadı. Gözden geçir veya düzenle.",
   },
   search: {
     title: "Hafızanı ara", subtitle: "Belirsiz olması sorun değil. DROP anlam arar, sadece kelimeleri değil.",

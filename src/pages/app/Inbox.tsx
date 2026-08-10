@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, ScreenSkeleton, StateError } from "@/components/app/DataStates";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { dropService } from "@/lib/services";
 import type { Drop } from "@/lib/supabase/database.types";
 import { CircleAlert, Inbox as InboxIcon, Loader2, RefreshCw, Sparkles } from "lucide-react";
@@ -20,6 +21,10 @@ export default function Inbox() {
     { table: "drops", userId },
   );
   const allDrops = allDropsQuery.data ?? [];
+
+  // Optional realtime enhancement — refetches when a drop changes. The list
+  // still loads and renders from the normal query if realtime is unavailable.
+  useRealtimeSync(userId ? { table: "drops", userId } : null, allDropsQuery.refetch);
   const navigate = useNavigate();
 
   const { processing, review, ready, failed } = useMemo(() => {
@@ -88,7 +93,7 @@ export default function Inbox() {
       {(review.length > 0 || failed.length > 0) && (
         <section>
           <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">
-            Help DROP understand these
+            {t("states.reviewHeader")}
           </h2>
           <div className="space-y-2.5">
             {[...failed, ...review].map((drop) => (
@@ -109,8 +114,8 @@ export default function Inbox() {
                   <p className="truncate text-sm font-semibold">{drop.title}</p>
                   <p className="text-xs text-muted-foreground">
                     {drop.status === "failed"
-                      ? "Analysis couldn't finish. Your Drop is safe — retry anytime."
-                      : "DROP wasn't fully sure about this one. Review or adjust it."}
+                      ? t("states.failedDesc")
+                      : t("states.reviewDesc")}
                   </p>
                 </div>
                 <Button
@@ -125,7 +130,7 @@ export default function Inbox() {
                   {t("common.retry")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => navigate(`/app/drop/${drop._id}`)}>
-                  Review
+                  {t("common.review")}
                 </Button>
               </div>
             ))}

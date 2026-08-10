@@ -7,7 +7,7 @@ export default {
   common: {
     retry: "Coba lagi", cancel: "Batal", save: "Simpan", done: "Selesai", back: "Kembali", next: "Lanjut",
     skip: "Lewati", close: "Tutup", delete: "Hapus", search: "Cari", settings: "Pengaturan",
-    offline: "Kamu sedang offline", refresh: "Muat ulang",
+    offline: "Kamu sedang offline", refresh: "Muat ulang", review: "Tinjau",
   },
   nav: {
     home: "Beranda", search: "Cari", saved: "Tersimpan", you: "Kamu", drop: "Simpan",
@@ -22,6 +22,7 @@ export default {
     emptyTitle: "Ingatanmu dimulai di sini",
     emptyDesc: "Simpan tangkapan layar, produk, tempat, dokumen, atau ide. DROP memahaminya otomatis — dan menemukannya nanti.",
     addFirst: "Tambahkan DROP pertamamu",
+    synced: "Tersinkron",
     offlineBanner: "Kamu offline — DROP baru akan masuk antrean dan tersimpan otomatis saat koneksi kembali.",
   },
   capture: {
@@ -66,7 +67,7 @@ export default {
   states: {
     loadingMemory: "Memuat ingatanmu…", nothingSaved: "Belum ada yang tersimpan.",
     nothingSavedDesc: "Kenangan favoritmu akan muncul di sini.", errorLoading: "Tidak bisa memuat ingatanmu.",
-    emptySearch: "Cari semua yang sudah kamu simpan.", noResults: "Tidak ada hasil yang cocok.",
+    emptySearch: "Cari semua yang sudah kamu simpan.", noResults: "Tidak ada hasil yang cocok.", reviewHeader: "Bantu DROP memahaminya", failedDesc: "Analisis tidak selesai. Drop Anda aman — coba lagi kapan saja.", reviewDesc: "DROP kurang yakin tentang ini. Periksa atau sesuaikan.",
   },
   search: {
     title: "Cari di ingatanmu", subtitle: "Samar-samar tidak apa-apa. DROP mencari makna, bukan sekadar kata.",
