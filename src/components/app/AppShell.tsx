@@ -23,6 +23,8 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
+import { isSupportedLanguage, setAppLanguage } from "@/lib/i18n";
 import { AddDropContext, type SharePayload } from "./AddDropContext";
 import { AddDropSheet, type DropKindOption } from "@/components/drops/AddDropSheet";
 import { MobileCaptureSheet } from "@/components/drops/MobileCaptureSheet";
@@ -32,29 +34,27 @@ import { QuickDrop } from "./QuickDrop";
 import { AppLockOverlay } from "./AppLockOverlay";
 import DropIntelligenceOverlay from "./DropIntelligenceOverlay";
 import { cn } from "@/lib/utils";
-import { useAddDrop } from "./AddDropContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useMobileApp } from "@/hooks/use-mobile-app";
 import { haptic, isNative } from "@/lib/mobile/native";
-import { appLockEnabled } from "@/lib/mobile/app-lock";
 import { dropService, storageService } from "@/lib/services";
 import { toast } from "sonner";
 
 const NAV = [
-  { to: "/app", label: "Home", icon: Home, end: true },
-  { to: "/app/search", label: "Search", icon: Search },
-  { to: "/app/inbox", label: "Inbox", icon: Inbox },
-  { to: "/app/collections", label: "Collections", icon: FolderHeart },
-  { to: "/app/places", label: "Places", icon: MapPin },
-  { to: "/app/wishlist", label: "Wishlist", icon: Heart },
-  { to: "/app/upcoming", label: "Upcoming", icon: CalendarClock },
-  { to: "/app/ask", label: "Ask DROP", icon: Sparkles },
+  { to: "/app", i18nKey: "nav.home", icon: Home, end: true },
+  { to: "/app/search", i18nKey: "nav.search", icon: Search },
+  { to: "/app/inbox", i18nKey: "nav.saved", icon: Inbox },
+  { to: "/app/collections", i18nKey: "nav.collections", icon: FolderHeart },
+  { to: "/app/places", i18nKey: "nav.places", icon: MapPin },
+  { to: "/app/wishlist", i18nKey: "nav.wishlist", icon: Heart },
+  { to: "/app/upcoming", i18nKey: "nav.upcoming", icon: CalendarClock },
+  { to: "/app/ask", i18nKey: "nav.ask", icon: Sparkles },
 ];
 
 const MORE_NAV = [
-  { to: "/app/actions", label: "Action Center", icon: Sparkles },
-  { to: "/app/stacks", label: "Stacks", icon: Layers },
-  { to: "/app/trash", label: "Trash", icon: Trash2 },
+  { to: "/app/actions", i18nKey: "nav.actions", icon: Sparkles },
+  { to: "/app/stacks", i18nKey: "nav.stacks", icon: Layers },
+  { to: "/app/trash", i18nKey: "nav.trash", icon: Trash2 },
 ];
 
 function ThemeToggle() {
@@ -74,6 +74,7 @@ function ThemeToggle() {
 }
 
 export default function AppShell() {
+  const { t } = useTranslation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetKind, setSheetKind] = useState<DropKindOption>("screenshot");
   const [mobileCaptureOpen, setMobileCaptureOpen] = useState(false);
@@ -82,10 +83,20 @@ export default function AppShell() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const { user, isAuthenticated, signOut } = useAuth();
+  const { resolvedTheme, setTheme } = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
   const { online, locked, setLocked, requestUnlock } = useMobileApp();
+
+  // Apply the user's saved theme + language from their profile.
+  useEffect(() => {
+    if (user?.theme && user.theme !== resolvedTheme) setTheme(user.theme);
+  }, [user?.theme, resolvedTheme, setTheme]);
+
+  useEffect(() => {
+    if (user?.locale && isSupportedLanguage(user.locale)) setAppLanguage(user.locale);
+  }, [user?.locale]);
 
   const openAdd = () => {
     if (isMobile) {
@@ -206,12 +217,12 @@ export default function AppShell() {
             fileName: file.name,
           });
           if (result.duplicate) {
-            toast("You already saved this", { description: `“${result.title ?? "item"}” is already in your memory.` });
+            toast(t("capture.alreadySaved"), { description: `“${result.title ?? "item"}”` });
           }
         }
         haptic("success");
-        toast(files.length > 1 ? `Dropped ${files.length} items ✓` : "Dropped ✓", {
-          description: "Saved instantly. DROP is understanding it now…",
+        toast(files.length > 1 ? `${t("capture.saved")} ×${files.length}` : t("capture.saved"), {
+          description: t("capture.savedDesc"),
         });
       } catch {
         toast("Couldn't upload", { description: "Your files are safe — try the + button instead." });
@@ -227,7 +238,7 @@ export default function AppShell() {
       window.removeEventListener("dragleave", onLeave);
       window.removeEventListener("drop", onDrop);
     };
-  }, [user]);
+  }, [user, t]);
 
   return (
     <AddDropContext.Provider value={{ open: openAdd, openWithKind: openAddWithKind, openWithShare: (p) => { setSharePayload(p); if (isMobile || isNative()) setMobileCaptureOpen(true); } }}>
@@ -241,7 +252,7 @@ export default function AppShell() {
           <div className="mt-6 px-2">
             <Button className="w-full gap-2 rounded-2xl py-5 text-[15px] font-semibold shadow-none" onClick={() => { haptic("light"); openAdd(); }}>
               <Plus className="h-4 w-4" strokeWidth={3} />
-              Drop Something
+              {t("home.dropSomething")}
             </Button>
           </div>
 
@@ -259,7 +270,7 @@ export default function AppShell() {
                 }
               >
                 <item.icon className="h-[18px] w-[18px]" />
-                {item.label}
+                {t(item.i18nKey)}
               </NavLink>
             ))}
 
@@ -278,7 +289,7 @@ export default function AppShell() {
                 }
               >
                 <item.icon className="h-[18px] w-[18px]" />
-                {item.label}
+                {t(item.i18nKey)}
               </NavLink>
             ))}
             <NavLink
@@ -291,7 +302,7 @@ export default function AppShell() {
               }
             >
               <Settings className="h-[18px] w-[18px]" />
-              Settings
+              {t("common.settings")}
             </NavLink>
           </nav>
 
@@ -313,61 +324,42 @@ export default function AppShell() {
           </div>
         </aside>
 
-        {/* Mobile top bar */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border/70 bg-background/85 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-md lg:hidden">
-          <button type="button" onClick={() => navigate("/")} className="flex items-center gap-2">
-            <Logo />
-          </button>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="text-muted-foreground" onClick={() => setCmdOpen(true)} aria-label="Command menu">
-              <Search className="h-5 w-5" />
-            </Button>
-            <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground"
-              onClick={() => navigate("/app/profile")}
-              aria-label="Profile"
-            >
-              <User className="h-5 w-5" />
-            </Button>
-          </div>
-        </header>
-
         {/* Offline banner */}
         {!online && (
-          <div className="sticky top-0 z-[60] flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-xs font-semibold text-amber-700 backdrop-blur-md dark:text-amber-300 lg:top-0">
-            <WifiOff className="h-3.5 w-3.5" />
-            You're offline — new Drops will be queued and saved automatically when you're back online.
+          <div className="sticky top-0 z-[60] flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-center text-xs font-semibold text-amber-700 backdrop-blur-md dark:text-amber-300">
+            <WifiOff className="h-3.5 w-3.5 shrink-0" />
+            <span>{t("home.offlineBanner")}</span>
           </div>
         )}
 
         {/* Main content — full-bleed on mobile (true app feel), the desktop
             max-width wrapper only applies from lg up. */}
-        <main className={cn("pb-24 lg:pb-10 lg:pl-60", online ? "" : "pt-0")}>
+        <main className={cn("pb-24 lg:pb-10 lg:pl-60")}>
           <div className="w-full px-4 pt-4 sm:px-5 lg:mx-auto lg:max-w-5xl lg:px-10 lg:pt-6">
             <Outlet />
           </div>
         </main>
 
-        {/* Mobile bottom nav */}
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
-          <div className="mx-auto grid max-w-md grid-cols-5 items-center px-2 py-1.5">
-            <MobileNavItem to="/app" label="Home" icon={Home} end />
-            <MobileNavItem to="/app/search" label="Search" icon={Search} />
-            <div className="flex justify-center">
+        {/* Mobile bottom navigation — Home · Search · DROP · Saved · You */}
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
+          <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pb-1 pt-1.5">
+            <MobileNavItem to="/app" label={t("nav.home")} icon={Home} end />
+            <MobileNavItem to="/app/search" label={t("nav.search")} icon={Search} />
+            <div className="flex flex-col items-center justify-end">
               <button
                 type="button"
-                onClick={() => { haptic("light"); openAdd(); }}
-                aria-label="Drop something"
-                className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-transform active:scale-95"
+                onClick={() => {
+                  void haptic("medium");
+                  openAdd();
+                }}
+                aria-label={t("nav.drop")}
+                className="-mt-7 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 ring-4 ring-background transition-transform active:scale-90"
               >
-                <Plus className="h-7 w-7" strokeWidth={2.5} />
+                <Plus className="h-6 w-6" strokeWidth={2.5} />
               </button>
             </div>
-            <MobileNavItem to="/app/collections" label="Saved" icon={FolderHeart} />
-            <MobileNavItem to="/app/profile" label="You" icon={User} />
+            <MobileNavItem to="/app/inbox" label={t("nav.saved")} icon={Inbox} />
+            <MobileNavItem to="/app/profile" label={t("nav.you")} icon={User} />
           </div>
         </nav>
 
@@ -391,10 +383,6 @@ export default function AppShell() {
           open={mobileCaptureOpen}
           onOpenChange={setMobileCaptureOpen}
           share={sharePayload}
-          onOpenAdvanced={(kind) => {
-            setSheetKind(kind);
-            setSheetOpen(true);
-          }}
         />
 
         <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} onQuickDrop={() => setQuickOpen(true)} />
@@ -443,10 +431,11 @@ function MobileNavItem({
     <NavLink
       to={to}
       end={end}
+      onClick={() => void haptic("light")}
       className={({ isActive }) =>
         cn(
-          "flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[10px] font-medium text-muted-foreground transition-colors",
-          isActive && "text-primary",
+          "flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors",
+          isActive && "bg-primary/10 text-primary",
         )
       }
     >

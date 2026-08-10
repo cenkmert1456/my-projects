@@ -9,6 +9,7 @@ import { BootScreen } from "@/components/app/BootScreen";
 import { ConfigErrorScreen } from "@/components/app/ConfigErrorScreen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
   CheckCircle2,
@@ -45,6 +46,7 @@ function maskEmail(email: string): string {
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
+  const { t } = useTranslation();
   const {
     startupState,
     isLoading: authLoading,
@@ -107,9 +109,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const validate = (): boolean => {
     const next: { email?: string; password?: string; name?: string } = {};
     if (mode !== "forgot") {
-      if (!EMAIL_RE.test(email.trim())) next.email = "Enter a valid email address.";
-      if (!password || password.length < 6) next.password = "Password must be at least 6 characters.";
-      if (mode === "signUp" && password !== passwordConfirm) next.password = "Passwords don't match.";
+      if (!EMAIL_RE.test(email.trim())) next.email = t("auth.emailValidation");
+      if (!password || password.length < 6) next.password = t("auth.passwordMinError");
+      if (mode === "signUp" && password !== passwordConfirm) next.password = t("auth.passwordMismatch");
     }
     setFieldErrors(next);
     return Object.keys(next).length === 0;
@@ -154,7 +156,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     event.preventDefault();
     if (isLoading) return;
     if (!EMAIL_RE.test(email.trim())) {
-      setFieldErrors({ email: "Enter a valid email address." });
+      setFieldErrors({ email: t("auth.emailValidation") });
       return;
     }
     setIsLoading(true);
@@ -173,11 +175,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     event.preventDefault();
     if (isLoading) return;
     if (password.length < 6) {
-      setFieldErrors({ password: "Password must be at least 6 characters." });
+      setFieldErrors({ password: t("auth.passwordMinError") });
       return;
     }
     if (password !== passwordConfirm) {
-      setFieldErrors({ password: "Passwords don't match." });
+      setFieldErrors({ password: t("auth.passwordMismatch") });
       return;
     }
     setIsLoading(true);
@@ -258,7 +260,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             onClick={() => switchMode("signIn")}
             className="cursor-pointer text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            Back
+            {t("common.back")}
           </button>
         )}
       </header>
@@ -270,10 +272,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           {mode !== "reset" && mode !== "confirm" && (
             <div className="mb-8">
               <h1 className="text-[34px] font-extrabold leading-[1.1] tracking-tight text-foreground">
-                Remember everything.
+                {t("auth.rememberEverything")}
               </h1>
               <p className="mt-2 text-[15px] text-muted-foreground">
-                Save anything. DROP finds it later.
+                {t("auth.tagline")}
               </p>
             </div>
           )}
@@ -292,12 +294,12 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 ) : (
                   <GoogleIcon className="h-5 w-5" />
                 )}
-                Continue with Google
+                {t("auth.continueWithGoogle")}
               </button>
 
               <div className="my-6 flex items-center gap-4" aria-hidden="true">
                 <span className="h-px flex-1 bg-border" />
-                <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">or</span>
+                <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{t("auth.or")}</span>
                 <span className="h-px flex-1 bg-border" />
               </div>
             </>
@@ -315,7 +317,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       setName(e.target.value);
                       clearFieldError("name");
                     }}
-                    placeholder="Your name"
+                    placeholder={t("auth.yourName")}
                     className={field}
                     disabled={isLoading}
                     autoComplete="name"
@@ -348,7 +350,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     setPassword(e.target.value);
                     clearFieldError("password");
                   }}
-                  placeholder={mode === "signUp" ? "Password (6+ characters)" : "Password"}
+                  placeholder={mode === "signUp" ? t("auth.passwordMin") : t("auth.password")}
                   type={showPassword ? "text" : "password"}
                   autoComplete={mode === "signUp" ? "new-password" : "current-password"}
                   className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
@@ -373,7 +375,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       setPasswordConfirm(e.target.value);
                       clearFieldError("password");
                     }}
-                    placeholder="Confirm password"
+                    placeholder={t("auth.confirmPassword")}
                     type={showPassword ? "text" : "password"}
                     autoComplete="new-password"
                     className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
@@ -390,7 +392,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     onClick={() => switchMode("forgot")}
                     className="cursor-pointer text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    Forgot password?
+                    {t("auth.forgotPassword")}
                   </button>
                 </div>
               )}
@@ -406,7 +408,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
                   <>
-                    {mode === "signIn" ? "Sign in" : "Create account"}
+                    {mode === "signIn" ? t("auth.signIn") : t("auth.createAccount")}
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}
@@ -420,7 +422,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               {!sent ? (
                 <form onSubmit={handleForgot} noValidate className="space-y-3.5">
                   <p className="text-sm leading-relaxed text-muted-foreground">
-                    Enter your email and we'll send you a link to reset your password.
+                    {t("auth.forgotIntro")}
                   </p>
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
@@ -441,7 +443,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   {fieldErrors.email && <FieldError message={fieldErrors.email} />}
                   {error && <InlineError message={error} />}
                   <Button type="submit" disabled={isLoading} className="mt-1 h-[52px] w-full gap-2 rounded-2xl text-[15px] font-semibold shadow-none">
-                    {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Send reset link <ArrowRight className="h-4 w-4" /></>}
+                    {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>{t("auth.backToSignIn")} <ArrowRight className="h-4 w-4" /></>}
                   </Button>
                 </form>
               ) : (
@@ -450,13 +452,13 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     <MailCheck className="h-7 w-7 text-emerald-600 dark:text-emerald-300" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold tracking-tight">Check your inbox</h2>
+                    <h2 className="text-lg font-bold tracking-tight">{t("auth.checkInbox")}</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      We sent a reset link to <span className="font-semibold text-foreground">{maskEmail(email)}</span>.
+                      {t("auth.resetSent")} <span className="font-semibold text-foreground">{maskEmail(email)}</span>.
                     </p>
                   </div>
                   <Button variant="outline" className="w-full rounded-2xl" onClick={() => switchMode("signIn")}>
-                    Back to sign in
+                    {t("auth.backToSignIn")}
                   </Button>
                 </div>
               )}
@@ -470,16 +472,16 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <MailCheck className="h-8 w-8 text-emerald-600 dark:text-emerald-300" />
               </div>
               <div>
-                <h2 className="text-xl font-bold tracking-tight">Check your inbox</h2>
+                <h2 className="text-xl font-bold tracking-tight">{t("auth.checkInbox")}</h2>
                 <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
-                  We sent a confirmation link to{" "}
+                  {t("auth.confirmSent")}{" "}
                   <span className="font-semibold text-foreground">{maskEmail(email)}</span>.
-                  Tap it to activate your account — then you're in.
+                  {t("auth.tapToActivate")}
                 </p>
               </div>
               {resent && (
                 <p className="flex items-center gap-1.5 rounded-2xl bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                  <CheckCircle2 className="h-4 w-4" /> Email resent
+                  <CheckCircle2 className="h-4 w-4" /> {t("auth.emailResent")}
                 </p>
               )}
               {error && <InlineError message={error} />}
@@ -491,7 +493,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     window.location.href = "mailto:";
                   }}
                 >
-                  Open email app
+                  {t("auth.openEmailApp")}
                 </Button>
                 <Button
                   type="button"
@@ -501,7 +503,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   disabled={isLoading}
                 >
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Resend email
+                  {t("auth.resend")}
                 </Button>
                 <button
                   type="button"
@@ -513,7 +515,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   }}
                   className="w-full cursor-pointer pt-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  Use a different email
+                  {t("auth.useDifferentEmail")}
                 </button>
               </div>
             </div>
@@ -522,8 +524,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           {/* New password (recovery) */}
           {mode === "reset" && (
             <form onSubmit={handleReset} noValidate className="space-y-3.5">
-              <h1 className="text-[28px] font-extrabold leading-tight tracking-tight">Choose a new password</h1>
-              <p className="text-sm text-muted-foreground">At least 6 characters. Make it memorable — not guessable.</p>
+              <h1 className="text-[28px] font-extrabold leading-tight tracking-tight">{t("auth.chooseNewPassword")}</h1>
+              <p className="text-sm text-muted-foreground">{t("auth.newPasswordHint")}</p>
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -532,7 +534,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     setPassword(e.target.value);
                     clearFieldError("password");
                   }}
-                  placeholder="New password"
+                  placeholder={t("auth.newPassword")}
                   type={showPassword ? "text" : "password"}
                   autoComplete="new-password"
                   className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
@@ -556,7 +558,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     setPasswordConfirm(e.target.value);
                     clearFieldError("password");
                   }}
-                  placeholder="Confirm new password"
+                  placeholder={t("auth.confirmNewPassword")}
                   type={showPassword ? "text" : "password"}
                   autoComplete="new-password"
                   className={cn(field, "pr-12", fieldErrors.password && "border-red-500/60")}
@@ -566,7 +568,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               {fieldErrors.password && <FieldError message={fieldErrors.password} />}
               {error && <InlineError message={error} />}
               <Button type="submit" disabled={isLoading} className="mt-1 h-[52px] w-full gap-2 rounded-2xl text-[15px] font-semibold shadow-none">
-                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Update password <ArrowRight className="h-4 w-4" /></>}
+                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>{t("auth.updatePassword")} <ArrowRight className="h-4 w-4" /></>}
               </Button>
             </form>
           )}
@@ -583,21 +585,21 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           >
             {mode === "signIn" ? (
               <>
-                New to DROP?{" "}
-                <span className="font-bold text-primary">Create account</span>
+                {t("auth.newToDrop")}{" "}
+                <span className="font-bold text-primary">{t("auth.createAccount")}</span>
               </>
             ) : (
               <>
-                Already have an account?{" "}
-                <span className="font-bold text-primary">Sign in</span>
+                {t("auth.haveAccount")}{" "}
+                <span className="font-bold text-primary">{t("auth.signIn")}</span>
               </>
             )}
           </button>
         )}
         <p className="text-center text-[11px] leading-relaxed text-muted-foreground/80">
-          By continuing you agree to DROP's Terms &amp; Privacy Policy.
+          {t("auth.terms")}
           <br />
-          Private by default — nothing you save is ever public.
+          {t("auth.privateDefault")}
         </p>
       </footer>
     </div>

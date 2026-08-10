@@ -65,6 +65,8 @@ export interface CapturedPhoto {
   displayName?: string;
   /** milliseconds — when the photo was taken (where provided by the OS). */
   takenAt?: number;
+  /** bytes — the source file size where the picker reports it. */
+  size?: number;
 }
 
 /**
@@ -96,20 +98,46 @@ export async function takePhoto(): Promise<CapturedPhoto | null> {
 }
 
 /**
- * Pick image(s) from the device library. Returns [] when cancelled.
- * `multiple` uses the native multi-select gallery (FilePicker.pickImages —
- * the Capacitor 8 camera plugin no longer exposes multi-pick).
+ * Pick image(s) from the device library. Returns [] when the user cancels;
+ * throws a friendly Error when the picker genuinely fails — failures are
+ * never swallowed silently.
+ *
+ * Single pick uses the Capacitor Camera plugin's photo picker (the Android
+ * system Photo Picker on 13+) which returns base64 directly — no
+ * content:// fetch and no storage-permission dance. Multi pick uses the
+ * @capawesome file picker, reading each file through the plugin's documented
+ * `fetch(path)` flow.
  */
 export async function pickPhotos(multiple = false): Promise<CapturedPhoto[]> {
   if (!isNative()) {
     const file = await pickFromInput(false);
     return file ? [file] : [];
   }
+  if (!multiple) {
+    try {
+      const { Camera, CameraSource, CameraResultType } = await import("@capacitor/camera");
+      const photo = await Camera.getPhoto({
+        source: CameraSource.Photos,
+        resultType: CameraResultType.DataUrl,
+        quality: 92,
+        correctOrientation: true,
+      });
+      if (!photo?.dataUrl) return []; // user cancelled
+      return [
+        {
+          dataUrl: photo.dataUrl,
+          format: photo.format,
+          displayName: `photo-${Date.now()}.${photo.format ?? "jpg"}`,
+        },
+      ];
+    } catch {
+      // Photo picker unavailable / permission blocked — fall through to the
+      // file picker below, which surfaces a clear error if that fails too.
+    }
+  }
+  const { FilePicker } = await import("@capawesome/capacitor-file-picker");
   try {
-    const { FilePicker } = await import("@capawesome/capacitor-file-picker");
-    const res = await FilePicker.pickImages({
-      limit: multiple ? 0 : 1,
-    });
+    const res = await FilePicker.pickImages({ limit: multiple ? 0 : 1 });
     const files = res.files ?? [];
     return files
       .filter((f) => f.path)
@@ -117,27 +145,125 @@ export async function pickPhotos(multiple = false): Promise<CapturedPhoto[]> {
         path: f.path as string,
         displayName: f.name,
         format: (f.mimeType ?? "image/jpeg").split("/")[1],
+        size: f.size,
       }));
   } catch {
-    return [];
+    throw new Error("Couldn't open the photo library.");
+  }
+}
+
+/**
+ * Read a picked photo to a Blob for upload. Prefers base64 when the picker
+ * returned it (no URI handling at all); otherwise fetches the native path.
+ * Returns null when the file can't be read.
+ */
+export async function pickedFileToBlob(photo: CapturedPhoto): Promise<Blob | null> {
+  if (photo.dataUrl) {
+    try {
+      const [head, body] = photo.dataUrl.split(",");
+      const mime = head.match(/data:(.*?);/)?.[1] ?? "image/jpeg";
+      const bytes = atob(body);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      return new Blob([arr], { type: mime });
+    } catch {
+      return null;
+    }
+  }
+  if (photo.path) {
+    try {
+      const res = await fetch(photo.path);
+      if (!res.ok) return null;
+      return await res.blob();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export interface PickedDocument {
+  dataUrl?: string;
+  path?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+}
+
+/**
+ * Open the system file/document picker. Returns null when the user cancels;
+ * throws a friendly error when the picker itself fails.
+ */
+export async function pickDocument(): Promise<PickedDocument | null> {
+  if (!isNative()) {
+    return pickDocFromInput();
+  }
+  const { FilePicker } = await import("@capawesome/capacitor-file-picker");
+  try {
+    const res = await FilePicker.pickFiles({ limit: 1, readData: true });
+    const f = res.files?.[0];
+    if (!f) return null; // cancelled
+    if (f.size && f.size > 50 * 1024 * 1024) {
+      throw new Error("That file is too large to save.");
+    }
+    return {
+      dataUrl: f.data,
+      path: f.path,
+      name: f.name,
+      mimeType: f.mimeType,
+      size: f.size,
+    };
+  } catch (err) {
+    if (err instanceof Error && /cancel/i.test(err.message)) return null;
+    throw new Error("Couldn't open the file picker.");
   }
 }
 
 function pickFromInput(capture: boolean): Promise<CapturedPhoto | null> {
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: CapturedPhoto | null) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("focus", onFocus);
+      resolve(value);
+    };
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     if (capture) input.setAttribute("capture", "environment");
     input.onchange = () => {
       const file = input.files?.[0];
+      if (!file) return finish(null);
+      const reader = new FileReader();
+      reader.onload = () => finish({ dataUrl: reader.result as string, displayName: file.name });
+      reader.onerror = () => finish(null);
+      reader.readAsDataURL(file);
+    };
+    // Browsers can't report a cancelled file dialog directly; when the window
+    // regains focus without a file, treat it as a cancel. Prevents a stuck sheet.
+    const onFocus = () => {
+      window.setTimeout(() => finish(null), 400);
+    };
+    window.addEventListener("focus", onFocus);
+    input.click();
+  });
+}
+
+function pickDocFromInput(): Promise<PickedDocument | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf,.txt,.doc,.docx,application/pdf,text/*,application/msword";
+    input.onchange = () => {
+      const file = input.files?.[0];
       if (!file) return resolve(null);
       const reader = new FileReader();
-      reader.onload = () => resolve({ dataUrl: reader.result as string, displayName: file.name });
+      reader.onload = () =>
+        resolve({ dataUrl: reader.result as string, name: file.name, mimeType: file.type, size: file.size });
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     };
-    input.oncancel = () => resolve(null);
     input.click();
   });
 }

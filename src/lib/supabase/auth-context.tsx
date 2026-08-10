@@ -93,6 +93,28 @@ function metaFromUser(user: { email?: string | null; user_metadata?: Record<stri
   return { email: user.email ?? undefined, name, image };
 }
 
+/**
+ * If the profile row can't be fetched or created (RLS not provisioned yet,
+ * network blip), fall back to a profile derived from the authenticated
+ * Supabase user so the UI NEVER shows a logged-in person as "Guest account".
+ */
+function fallbackProfile(userId: string, meta?: ProfileMeta): Profile {
+  const now = Date.now();
+  return {
+    id: userId,
+    name: meta?.name,
+    email: meta?.email,
+    image: meta?.image,
+    role: "user",
+    plan: "free",
+    onboardingDone: true,
+    searchHistoryEnabled: true,
+    dailyRecallEnabled: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 async function ensureProfile(userId: string, meta?: ProfileMeta): Promise<Profile | null> {
   try {
     let profile = await profileService.get(userId);
@@ -103,6 +125,10 @@ async function ensureProfile(userId: string, meta?: ProfileMeta): Promise<Profil
         image: meta?.image,
       });
       profile = await profileService.get(userId);
+    } else if (meta?.email && !profile.email) {
+      // Repair: the trigger may have created the row without the email.
+      await profileService.upsert(userId, { email: meta.email });
+      profile = { ...profile, email: meta.email };
     }
     return profile;
   } catch {
@@ -118,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadProfile = useCallback(async (userId: string, meta?: ProfileMeta) => {
     const profile = await ensureProfile(userId, meta);
-    setUser(profile);
+    setUser(profile ?? fallbackProfile(userId, meta));
   }, []);
 
   // Boot: await storage hydration (native cold start), restore session, then

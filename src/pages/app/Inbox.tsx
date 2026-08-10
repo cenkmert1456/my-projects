@@ -1,15 +1,18 @@
 import { DropCard } from "@/components/drops/DropCard";
 import { Button } from "@/components/ui/button";
+import { EmptyState, ScreenSkeleton, StateError } from "@/components/app/DataStates";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtimeQuery } from "@/hooks/use-realtime-query";
 import { dropService } from "@/lib/services";
 import type { Drop } from "@/lib/supabase/database.types";
-import { CircleAlert, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { CircleAlert, Inbox as InboxIcon, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export default function Inbox() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const userId = user?.id;
   const allDropsQuery = useRealtimeQuery(
@@ -35,10 +38,26 @@ export default function Inbox() {
     return groups;
   }, [allDrops]);
 
-  if (allDropsQuery.loading && !allDrops.length) {
+  // Explicit states — a failed or hanging query is an ERROR, never a spinner.
+  if (allDropsQuery.loading && !allDropsQuery.data) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t("nav.saved")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("states.loadingMemory")}</p>
+        </div>
+        <ScreenSkeleton items={6} />
+      </div>
+    );
+  }
+
+  if (allDropsQuery.error && !allDropsQuery.data) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t("nav.saved")}</h1>
+        </div>
+        <StateError message={allDropsQuery.error} onRetry={allDropsQuery.refetch} />
       </div>
     );
   }
@@ -46,9 +65,9 @@ export default function Inbox() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Inbox</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.saved")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Every new Drop lands here while DROP understands it.
+          {t("states.nothingSavedDesc")}
         </p>
       </div>
 
@@ -56,7 +75,7 @@ export default function Inbox() {
         <section>
           <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-            Understanding your Drops…
+            {t("states.loadingMemory")}
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {processing.map((drop, i) => (
@@ -103,7 +122,7 @@ export default function Inbox() {
                   }}
                 >
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                  Retry
+                  {t("common.retry")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => navigate(`/app/drop/${drop._id}`)}>
                   Review
@@ -117,7 +136,7 @@ export default function Inbox() {
       {ready.length > 0 && (
         <section>
           <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5 text-primary" /> Understood
+            <Sparkles className="h-3.5 w-3.5 text-primary" /> {t("home.recent")}
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {ready.map((drop, i) => (
@@ -128,13 +147,11 @@ export default function Inbox() {
       )}
 
       {allDrops.length === 0 && (
-        <div className="flex flex-col items-center rounded-3xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-          <Sparkles className="h-8 w-8 text-primary" />
-          <h3 className="mt-3 text-lg font-bold tracking-tight">Your inbox is empty</h3>
-          <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-            Drop something and it will appear here — instantly, while DROP starts understanding it.
-          </p>
-        </div>
+        <EmptyState
+          icon={InboxIcon}
+          title={t("empty.inbox")}
+          description={t("empty.inboxDesc")}
+        />
       )}
     </div>
   );

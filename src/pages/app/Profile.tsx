@@ -16,8 +16,10 @@ import { profileService, searchService } from "@/lib/services";
 import {
   Archive,
   CalendarClock,
+  ChevronRight,
   Download,
   Heart,
+  Globe,
   Loader2,
   Lock,
   LogOut,
@@ -33,8 +35,12 @@ import { useTheme } from "next-themes";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+
+const IS_DEV = import.meta.env.DEV;
 
 export default function Profile() {
+  const { t } = useTranslation();
   const { user, signOut, refreshProfile } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const navigate = useNavigate();
@@ -57,11 +63,10 @@ export default function Profile() {
 
   const statItems = stats
     ? [
-        { label: "Drops", value: stats.total, icon: Archive },
-        { label: "Places", value: stats.places, icon: MapPin },
-        { label: "Products", value: stats.products, icon: Heart },
-        { label: "Upcoming", value: stats.upcoming, icon: CalendarClock },
-        { label: "Cities", value: stats.cities, icon: Sparkles },
+        { label: t("nav.saved"), value: stats.total, icon: Archive },
+        { label: t("nav.places"), value: stats.places, icon: MapPin },
+        { label: t("nav.wishlist"), value: stats.products, icon: Heart },
+        { label: t("nav.upcoming"), value: stats.upcoming, icon: CalendarClock },
         { label: "Rediscovered", value: stats.rediscovered, icon: Search },
       ]
     : [];
@@ -78,7 +83,7 @@ export default function Profile() {
       a.download = `drop-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast("Your data is downloading");
+      toast(t("profile.exportData"));
     } catch {
       toast("Couldn't export your data — try again");
     } finally {
@@ -87,9 +92,10 @@ export default function Profile() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-7">
+      {/* Identity header — real profile data, never "Guest" */}
       <div className="flex items-center gap-4">
-        <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/12 text-2xl font-extrabold text-primary">
+        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-primary/12 text-2xl font-extrabold text-primary">
           {(user?.name ?? user?.email ?? "D")[0]?.toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
@@ -98,7 +104,7 @@ export default function Profile() {
               e.preventDefault();
               await profileService.updateProfile(uid as string, { name: name.trim() || undefined });
               await refreshProfile();
-              toast("Name saved");
+              toast(t("profile.nameSaved"));
             }}
           >
             <Input
@@ -107,10 +113,17 @@ export default function Profile() {
               className="h-8 w-full max-w-56 border-transparent bg-transparent px-0 text-xl font-extrabold tracking-tight hover:border-border focus-visible:ring-0"
             />
           </form>
-          <p className="text-sm text-muted-foreground">{user?.email ?? "Guest account"}</p>
+          {user?.email && (
+            <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+          )}
         </div>
-        <Button variant="outline" className="gap-2" onClick={() => void signOut().then(() => navigate("/"))}>
-          <LogOut className="h-4 w-4" /> Sign out
+        <Button
+          variant="ghost"
+          className="gap-2 rounded-2xl text-muted-foreground"
+          onClick={() => void signOut().then(() => navigate("/"))}
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="hidden sm:inline">{t("profile.signOut")}</span>
         </Button>
       </div>
 
@@ -157,18 +170,32 @@ export default function Profile() {
       <section className="space-y-1 rounded-3xl border border-border/80 bg-card p-2">
         <SettingRow
           icon={dark ? Sun : Moon}
-          title="Appearance"
-          desc={dark ? "Dark mode" : "Light mode"}
+          title={t("profile.appearance")}
+          desc={dark ? t("profile.darkMode") : t("profile.lightMode")}
         >
           <Switch checked={dark} onCheckedChange={(v) => setTheme(v ? "dark" : "light")} />
         </SettingRow>
-        <SettingRow icon={Search} title="Search history" desc="Save my searches to make repeat lookups faster">
+        <button
+          type="button"
+          onClick={() => navigate("/app/settings")}
+          className="flex w-full cursor-pointer items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-muted/40"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted">
+            <Globe className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold">{t("profile.language")}</span>
+            <span className="block truncate text-xs text-muted-foreground">{t("common.settings")}</span>
+          </span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <SettingRow icon={Search} title={t("profile.searchHistory")} desc={t("profile.searchHistoryDesc")}>
           <Switch
             defaultChecked={user?.searchHistoryEnabled !== false}
             onCheckedChange={(v) => void profileService.updateProfile(uid as string, { searchHistoryEnabled: v })}
           />
         </SettingRow>
-        <SettingRow icon={Sparkles} title="Daily recall" desc="Occasionally resurface forgotten Drops on Home">
+        <SettingRow icon={Sparkles} title={t("profile.dailyRecall")} desc={t("profile.dailyRecallDesc")}>
           <Switch
             defaultChecked={user?.dailyRecallEnabled !== false}
             onCheckedChange={(v) => void profileService.updateProfile(uid as string, { dailyRecallEnabled: v })}
@@ -179,45 +206,54 @@ export default function Profile() {
       {/* Data */}
       <section className="space-y-2.5">
         <Button variant="outline" className="w-full justify-start gap-2.5 rounded-2xl" onClick={() => void handleExport()}>
-          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export my data (JSON)
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} {t("profile.exportData")}
         </Button>
         <Button
           variant="outline"
           className="w-full justify-start gap-2.5 rounded-2xl"
           onClick={async () => {
             await searchService.clearSearchHistory(uid as string);
-            toast("Search history cleared");
+            toast(t("profile.clearSearchHistory"));
           }}
         >
-          <Trash2 className="h-4 w-4" /> Clear search history
-        </Button>
-        <Button
-          variant="outline"
-          className="w-full justify-start gap-2.5 rounded-2xl"
-          onClick={async () => {
-            setSeeding(true);
-            try {
-              await profileService.loadDemoData(uid as string);
-              toast("Sample Drops added — search them by name");
-            } finally {
-              setSeeding(false);
-            }
-          }}
-        >
-          {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Load sample data
+          <Trash2 className="h-4 w-4" /> {t("profile.clearSearchHistory")}
         </Button>
       </section>
+
+      {/* Developer settings — development builds only */}
+      {IS_DEV && (
+        <details className="rounded-3xl border border-border/70 bg-muted/20 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-muted-foreground">
+            {t("profile.developer")}
+          </summary>
+          <div className="mt-3">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2.5 rounded-2xl"
+              onClick={async () => {
+                setSeeding(true);
+                try {
+                  await profileService.loadDemoData(uid as string);
+                  toast("Sample Drops added — search them by name");
+                } finally {
+                  setSeeding(false);
+                }
+              }}
+            >
+              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} {t("profile.loadSampleData")}
+            </Button>
+          </div>
+        </details>
+      )}
 
       {/* Privacy + delete */}
       <section className="space-y-3 rounded-3xl border border-border/80 bg-card p-5">
         <div className="flex items-start gap-3">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div>
-            <p className="text-sm font-bold">Private by default</p>
+            <p className="text-sm font-bold">{t("profile.privateByDefault")}</p>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-              Your Drops are never public, files are served with signed URLs, and
-              your content is never used to train models. You can export or delete
-              everything, anytime.
+              {t("profile.privateByDefaultDesc")}
             </p>
           </div>
         </div>
@@ -226,7 +262,7 @@ export default function Profile() {
           className="w-full justify-start gap-2.5 rounded-2xl text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={() => setDeleteOpen(true)}
         >
-          <Trash2 className="h-4 w-4" /> Delete my account and all my Drops
+          <Trash2 className="h-4 w-4" /> {t("profile.deleteAccount")}
         </Button>
       </section>
 
@@ -237,7 +273,7 @@ export default function Profile() {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="tracking-tight">Delete your account?</DialogTitle>
+            <DialogTitle className="tracking-tight">{t("profile.deleteAccount")}</DialogTitle>
             <DialogDescription>
               This permanently deletes all your Drops, files, collections,
               reminders and search history. This cannot be undone.

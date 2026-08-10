@@ -14,6 +14,7 @@ import {
   HardDrive,
   Loader2,
   Lock,
+  Monitor,
   Moon,
   RefreshCw,
   Search,
@@ -28,6 +29,8 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { SUPPORTED_LANGUAGES, setAppLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { isNative } from "@/lib/mobile/platform";
 import { biometricsAvailable } from "@/lib/mobile/native";
@@ -35,9 +38,10 @@ import { setAppLockDelay, setAppLockEnabled, type LockDelay } from "@/lib/mobile
 import { useDropAI } from "@/lib/drop-ai";
 
 export default function Settings() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const uid = user?.id ?? null;
-  const { resolvedTheme, setTheme } = useTheme();
+  const { resolvedTheme, theme, setTheme } = useTheme();
   const dark = resolvedTheme === "dark";
   const navigate = useNavigate();
   const [health, setHealth] = useState<WebAIHealth | null>(null);
@@ -106,7 +110,7 @@ export default function Settings() {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("common.settings")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Your memory, your rules.
         </p>
@@ -176,33 +180,40 @@ export default function Settings() {
       <section className="space-y-4 rounded-3xl border border-border/80 bg-card p-5">
         <div className="flex items-center gap-2">
           <Sun className="h-5 w-5 text-primary" />
-          <h2 className="font-bold tracking-tight">Appearance</h2>
+          <h2 className="font-bold tracking-tight">{t("profile.appearance")}</h2>
         </div>
         <div className="grid grid-cols-3 gap-2">
           {[
-            { id: "light", label: "Light", icon: Sun },
-            { id: "dark", label: "Dark", icon: Moon },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => {
-                setTheme(id);
-                void profileService.updateProfile(uid as string, { theme: id });
-              }}
-              className={cn(
-                "flex cursor-pointer flex-col items-center gap-2 rounded-2xl border p-4 transition-colors",
-                dark === (id === "dark")
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-border bg-muted/30 text-muted-foreground hover:border-primary/30 hover:text-foreground",
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="text-xs font-semibold">{label}</span>
-            </button>
-          ))}
+            { id: "light", label: t("profile.lightMode"), icon: Sun },
+            { id: "dark", label: t("profile.darkMode"), icon: Moon },
+            { id: "system", label: t("profile.system"), icon: Monitor },
+          ].map(({ id, label, icon: Icon }) => {
+            const active = id === "system" ? theme === "system" : (id === "dark") === dark;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setTheme(id);
+                  void profileService.updateProfile(uid as string, { theme: id });
+                }}
+                className={cn(
+                  "flex cursor-pointer flex-col items-center gap-2 rounded-2xl border p-4 transition-colors",
+                  active
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border bg-muted/30 text-muted-foreground hover:border-primary/30 hover:text-foreground",
+                )}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-xs font-semibold">{label}</span>
+              </button>
+            );
+          })}
         </div>
       </section>
+
+      {/* Language */}
+      <LanguageSection uid={uid} />
 
       {/* Capture & search */}
       <section className="space-y-1 rounded-3xl border border-border/80 bg-card p-2">
@@ -222,9 +233,6 @@ export default function Settings() {
             defaultChecked={user?.searchHistoryEnabled !== false}
             onCheckedChange={(v) => void profileService.updateProfile(uid as string, { searchHistoryEnabled: v })}
           />
-        </SettingRow>
-        <SettingRow icon={Globe} title="Language" desc="Your UI language — English for now, more coming">
-          <span className="rounded-xl bg-muted px-2.5 py-1 text-xs font-bold">EN</span>
         </SettingRow>
       </section>
 
@@ -267,6 +275,47 @@ export default function Settings() {
         </Button>
       </section>
     </div>
+  );
+}
+
+/**
+ * Language — the full DROP language list in native names. Changing applies
+ * instantly app-wide (no restart) and syncs to the profile.
+ */
+function LanguageSection({ uid }: { uid: string | null }) {
+  const { i18n, t } = useTranslation();
+  const current = i18n.language;
+  return (
+    <section className="space-y-4 rounded-3xl border border-border/80 bg-card p-5">
+      <div className="flex items-center gap-2">
+        <Globe className="h-5 w-5 text-primary" />
+        <h2 className="font-bold tracking-tight">{t("profile.language")}</h2>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {SUPPORTED_LANGUAGES.map((lang) => {
+          const active = current === lang.code || current.startsWith(lang.code + "-");
+          return (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => {
+                setAppLanguage(lang.code);
+                if (uid) void profileService.updateProfile(uid, { locale: lang.code });
+              }}
+              className={cn(
+                "flex cursor-pointer items-center justify-between gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-medium transition-colors",
+                active
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border bg-muted/20 text-muted-foreground hover:border-primary/30 hover:text-foreground",
+              )}
+            >
+              <span className="truncate">{t(`languages.${lang.code}`)}</span>
+              {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -393,7 +442,7 @@ function SettingRow({
 /**
  * DROP Intelligence — the only AI settings consumers ever see. Status, one
  * Wi-Fi toggle, storage, and model controls. No models, no keys, no servers.
- * Technical details live behind “Advanced”.
+ * Technical details live behind "Advanced".
  */
 function DropIntelligenceSection({
   health,

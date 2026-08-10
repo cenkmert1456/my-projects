@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/supabase/auth-errors";
+import { withTimeout } from "@/lib/supabase/errors";
 
 export interface RealtimeQueryOptions {
   /** Table to subscribe to (drops, collections, stacks, reminders, …). */
@@ -12,8 +13,11 @@ export interface RealtimeQueryOptions {
 }
 
 export interface RealtimeQueryResult<T> {
+  /** undefined while nothing has loaded yet (initial fetch). */
   data: T | undefined;
+  /** true only while the initial fetch (or a refetch) is in flight. */
   loading: boolean;
+  /** Human-readable message when the last fetch failed — never raw errors. */
   error: string | null;
   refetch: () => void;
 }
@@ -21,10 +25,15 @@ export interface RealtimeQueryResult<T> {
 /**
  * Reactive data hook — the useQuery replacement.
  *
- * Fetches through the provided fetcher, then subscribes to Supabase Realtime
- * (postgres_changes) for the given table, scoped to the owner. Any
- * insert/update/delete to the user's own rows triggers a refetch, so screens
- * stay live without polling.
+ * Fetches through the provided fetcher (wrapped in a 12s timeout so a dead
+ * network can never leave a screen spinning), then subscribes to Supabase
+ * Realtime (postgres_changes) for the given table, scoped to the owner.
+ *
+ * State contract (screens should render all four explicitly):
+ *   - data === undefined && loading  → INITIAL_LOADING (skeleton)
+ *   - data !== undefined             → READY (even when [] → EMPTY)
+ *   - error && data === undefined    → ERROR (with retry)
+ *   - error && data !== undefined    → stale data + quiet error
  */
 export function useRealtimeQuery<T>(
   fetcher: () => Promise<T>,
@@ -42,14 +51,17 @@ export function useRealtimeQuery<T>(
 
   useEffect(() => {
     if (!userId) {
+      // Not signed in (yet): settle immediately so guards never spin.
       setData(undefined);
       setLoading(false);
+      setError(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    fetcherRef
-      .current()
+    // Timeout guard: a stalled request resolves as an error instead of
+    // leaving the screen in an endless spinner.
+    withTimeout(fetcherRef.current(), 12000)
       .then((result) => {
         if (cancelled) return;
         setData(result);
@@ -57,8 +69,8 @@ export function useRealtimeQuery<T>(
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        // Users never see raw Supabase / fetch errors — translate to a calm,
-        // actionable message with a retry affordance.
+        // Keep any previously loaded data (stale-while-revalidate) so a
+        // transient failure never blanks the screen.
         setError(authErrorMessage(err, "Couldn't load your data — pull to refresh."));
       })
       .finally(() => {

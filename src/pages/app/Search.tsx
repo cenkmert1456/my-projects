@@ -1,25 +1,30 @@
-import { DropCard } from "@/components/drops/DropCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StateError } from "@/components/app/DataStates";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtimeQuery } from "@/hooks/use-realtime-query";
+import { useStorageUrl } from "@/hooks/use-storage-url";
 import { searchService } from "@/lib/services";
-import { Loader2, Search as SearchIcon, Sparkles, X } from "lucide-react";
+import { authErrorMessage } from "@/lib/supabase/auth-errors";
+import { timeAgo } from "@/lib/format";
+import { KIND_META } from "@/lib/drop-meta";
+import { ChevronRight, Loader2, Search as SearchIcon, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { CATEGORY_META } from "@/lib/drop-meta";
 import type { SearchHit } from "@/lib/supabase/database.types";
 
 const QUICK_FILTERS = [
-  { id: "today", label: "Today" },
-  { id: "week", label: "This week" },
-  { id: "screenshots", label: "📸 Screenshots" },
-  { id: "links", label: "🔗 Links" },
-  { id: "products", label: "🛍️ Products" },
-  { id: "places", label: "📍 Places" },
-  { id: "travel", label: "✈️ Travel" },
-  { id: "receipts", label: "🧾 Receipts" },
+  { id: "today", labelKey: "search.today" },
+  { id: "week", labelKey: "search.thisWeek" },
+  { id: "screenshots", labelKey: "capture.screenshot" },
+  { id: "links", labelKey: "capture.link" },
+  { id: "products", labelKey: "nav.wishlist" },
+  { id: "places", labelKey: "nav.places" },
+  { id: "travel", labelKey: "nav.upcoming" },
+  { id: "receipts", labelKey: "capture.document" },
 ];
 
 const EXAMPLES = [
@@ -32,6 +37,7 @@ const EXAMPLES = [
 ];
 
 export default function Search() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const uid = user?.id ?? null;
   const [params, setParams] = useSearchParams();
@@ -41,6 +47,7 @@ export default function Search() {
   const [category, setCategory] = useState<string | null>(null);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(0);
   const { data: recentSearches } = useRealtimeQuery(
     () => searchService.listSearchHistory(uid as string, 8),
@@ -53,9 +60,11 @@ export default function Search() {
     if (!q.trim() || !uid) {
       setHits(null);
       setCount(0);
+      setError(null);
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const day = 86400000;
       const now = Date.now();
@@ -73,6 +82,8 @@ export default function Search() {
       });
       setHits(res.results);
       setCount(res.count);
+    } catch (err) {
+      setError(authErrorMessage(err, "Couldn't search right now."));
     } finally {
       setLoading(false);
     }
@@ -91,7 +102,7 @@ export default function Search() {
   }, [query, quick, category, uid]);
 
   const hasQuery = query.trim().length > 0;
-  const showExamples = !hasQuery && !loading && (!hits || hits.length === 0);
+  const showExamples = !hasQuery && !loading && (!hits || hits.length === 0) && !error;
 
   const categoryChips = useMemo(
     () =>
@@ -106,9 +117,9 @@ export default function Search() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Search your memory</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("search.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Vague is fine. DROP searches meaning, not just words.
+          {t("search.subtitle")}
         </p>
       </div>
 
@@ -124,7 +135,7 @@ export default function Search() {
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask DROP anything…"
+          placeholder={t("search.placeholder")}
           className="h-13 rounded-2xl py-3.5 pl-11 pr-12 text-[15px]"
         />
         {query && (
@@ -153,7 +164,7 @@ export default function Search() {
                 : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
             )}
           >
-            {f.label}
+            {t(f.labelKey)}
           </button>
         ))}
       </div>
@@ -180,19 +191,20 @@ export default function Search() {
       {loading && (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
-          Searching your memory…
+          {t("states.loadingMemory")}
         </div>
       )}
+
+      {error && !loading && <StateError message={error} onRetry={() => void runSearch(query)} />}
 
       {!loading && hits && hits.length > 0 && (
         <div>
           <p className="mb-3 text-sm text-muted-foreground">
-            {count} result{count !== 1 ? "s" : ""} — {hits.filter((h) => h.semantic).length} matched
-            by meaning
+            {count} {t("search.results")} — {hits.filter((h) => h.semantic).length} matched by meaning
           </p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {hits.map((hit, i) => (
-              <DropCard key={hit.drop._id} drop={hit.drop} index={i} />
+          <div className="space-y-2.5">
+            {hits.map((hit) => (
+              <SearchResultRow key={hit.drop._id} hit={hit} />
             ))}
           </div>
         </div>
@@ -201,7 +213,7 @@ export default function Search() {
       {!loading && hasQuery && hits && hits.length === 0 && (
         <div className="flex flex-col items-center rounded-3xl border border-dashed border-border bg-card/40 px-6 py-14 text-center">
           <SearchIcon className="h-8 w-8 text-muted-foreground" />
-          <h3 className="mt-3 text-lg font-bold tracking-tight">Nothing found</h3>
+          <h3 className="mt-3 text-lg font-bold tracking-tight">{t("states.noResults")}</h3>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
             Try different words, or ask DROP directly — it can compare and reason over what you saved.
           </p>
@@ -210,7 +222,7 @@ export default function Search() {
             onClick={() => navigate(`/app/ask?q=${encodeURIComponent(query)}`)}
           >
             <Sparkles className="h-4 w-4" />
-            Ask DROP
+            {t("nav.ask")}
           </Button>
         </div>
       )}
@@ -220,7 +232,7 @@ export default function Search() {
           {recentSearches && recentSearches.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Recent searches
+                {t("search.recent")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {recentSearches.map((s) => (
@@ -263,5 +275,41 @@ export default function Search() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Visual result row — thumbnail, title, why it matched, saved time. */
+function SearchResultRow({ hit }: { hit: SearchHit }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const storageUrl = useStorageUrl(hit.drop.storagePath);
+  const meta = KIND_META[hit.drop.kind];
+
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(`/app/drop/${hit.drop._id}`)}
+      className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-border/80 bg-card p-3 text-left transition-all hover:border-primary/30 active:scale-[0.99]"
+    >
+      <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-xl">
+        {storageUrl ? (
+          <img src={storageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : (
+          (meta?.emoji ?? "📦")
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{hit.drop.title}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {hit.matched.length > 0
+            ? `${t("search.matched")}: “${hit.matched.slice(0, 3).join("”, “")}”`
+            : hit.drop.category}
+        </span>
+        <span className="block text-[11px] text-muted-foreground/70">
+          {hit.drop.kind} · {timeAgo(hit.drop.savedAt)}
+        </span>
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
   );
 }

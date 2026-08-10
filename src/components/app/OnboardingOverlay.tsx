@@ -3,57 +3,44 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { profileService } from "@/lib/services";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Camera, Search, Sparkles } from "lucide-react";
+import { Camera, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 const STEPS = [
   {
-    icon: <DropMark className="h-16 w-16" />,
-    title: "Never lose something you saved again.",
-    desc: "Screenshots, links, products, places — drop them in, and they're remembered forever.",
+    icon: <DropMark className="h-12 w-12" />,
+    title: "Save anything.",
+    desc: "Screenshots, links, products, places, notes — drop them in and they're saved instantly.",
   },
   {
     icon: <Camera className="h-10 w-10 text-primary" />,
-    title: "Save anything. Instantly.",
-    desc: "Screenshots, photos, links, notes, documents — paste, drag, or drop. It's saved the moment you add it.",
-  },
-  {
-    icon: <Sparkles className="h-10 w-10 text-primary" />,
-    title: "DROP understands it all.",
-    desc: "AI reads what's inside, creates a smart title, extracts the price, place and date — and organizes everything for you.",
+    title: "Organize nothing.",
+    desc: "DROP understands it automatically — smart titles, prices, places and dates, with no folders.",
   },
   {
     icon: <Search className="h-10 w-10 text-primary" />,
-    title: "Find it with a sentence.",
-    desc: "“Where was that hotel I saved for Tokyo?” DROP finds it. No folders, no organizing.",
+    title: "Find everything.",
+    desc: "“Black shoes I saved last month” — DROP finds it. Search naturally, later.",
   },
 ];
 
 export function OnboardingOverlay() {
+  const { t } = useTranslation();
   // The overlay stays mounted while the user is signed in; it decides its own
   // visibility from the reactive user record. This lets AnimatePresence finish
-  // the exit animation cleanly — unmounting this component from an external
-  // conditional while AnimatePresence owns exiting DOM nodes crashes React with
-  // "The node to be removed is not a child of this node."
+  // the exit animation cleanly.
   const { user } = useAuth();
   const open = user ? user.onboardingDone !== true : false;
 
   const [step, setStep] = useState(0);
-  const [withDemo, setWithDemo] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const finish = async () => {
     setBusy(true);
     try {
       if (user?.id) {
-        if (withDemo) {
-          try {
-            await profileService.loadDemoData(user.id);
-          } catch {
-            // demo data is optional
-          }
-        }
         await profileService.updateProfile(user.id, { onboardingDone: true });
       }
     } finally {
@@ -68,22 +55,23 @@ export function OnboardingOverlay() {
       {open && (
         <motion.div
           key="onboarding"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.25 }}
         >
+          {/* Subtle contained glow — never peeks outside the card */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute left-1/2 top-1/3 h-80 w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[100px]" />
+            <div className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[90px]" />
           </div>
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
-              initial={{ opacity: 0, y: 24 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.35 }}
+              exit={{ opacity: 0, y: -14 }}
+              transition={{ duration: 0.3 }}
               className="relative mx-4 flex w-full max-w-sm flex-col items-center rounded-[2rem] border border-border/70 bg-card p-8 text-center"
             >
               <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-accent/60">
@@ -110,32 +98,13 @@ export function OnboardingOverlay() {
                 ))}
               </div>
 
-              {step === STEPS.length - 1 && (
-                <label className="mt-5 flex cursor-pointer items-center gap-2.5 rounded-2xl border border-border/80 bg-muted/50 px-4 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={withDemo}
-                    onChange={(e) => setWithDemo(e.target.checked)}
-                    className="h-4 w-4 accent-[var(--primary)]"
-                  />
-                  <span className="text-left">
-                    <span className="block font-semibold">
-                      Try with sample Drops
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      Shoes, flights, restaurants — feel the magic instantly
-                    </span>
-                  </span>
-                </label>
-              )}
-
               <div className="mt-6 flex w-full items-center gap-2">
                 {step > 0 && (
                   <Button
                     variant="ghost"
                     onClick={() => setStep((s) => Math.max(0, s - 1))}
                   >
-                    Back
+                    {t("common.back")}
                   </Button>
                 )}
                 <Button
@@ -145,19 +114,16 @@ export function OnboardingOverlay() {
                     if (step < STEPS.length - 1) setStep((s) => s + 1);
                     else {
                       await finish();
-                      toast("Welcome to DROP ✨", {
-                        description:
-                          "Drop your first screenshot or link — DROP takes it from there.",
-                      });
+                      toast(t("capture.saved"), { description: t("home.emptyDesc") });
                     }
                   }}
                 >
                   {busy
-                    ? "Getting ready…"
+                    ? "…"
                     : step === STEPS.length - 1
-                      ? "Start dropping"
-                      : "Next"}
-                  {!busy && <ArrowRight className="h-4 w-4" />}
+                      ? t("common.save")
+                      : t("common.next")}
+                  {!busy && step === STEPS.length - 1 && <Sparkles className="h-4 w-4" />}
                 </Button>
               </div>
               <button
@@ -165,7 +131,7 @@ export function OnboardingOverlay() {
                 onClick={() => void finish()}
                 className="mt-3 cursor-pointer text-xs text-muted-foreground hover:text-foreground"
               >
-                Skip for now
+                {t("common.skip")}
               </button>
             </motion.div>
           </AnimatePresence>

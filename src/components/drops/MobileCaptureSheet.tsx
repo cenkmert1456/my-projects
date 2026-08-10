@@ -6,12 +6,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { dropService, storageService } from "@/lib/services";
 import {
   Camera,
+  ChevronLeft,
   FileUp,
   ImagePlus,
+  Images,
   Link2,
   Loader2,
   Mic,
@@ -24,16 +28,18 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { isNative } from "@/lib/mobile/platform";
 import {
   haptic,
   pickPhotos,
   takePhoto,
+  pickedFileToBlob,
+  pickDocument,
   type CapturedPhoto,
 } from "@/lib/mobile/native";
 import { optimizeImage, dataUrlToBlob } from "@/lib/mobile/image";
 import { VoiceRecorder } from "@/lib/mobile/voice";
+import { authErrorMessage } from "@/lib/supabase/auth-errors";
+import { useTranslation } from "react-i18next";
 import type { SharePayload } from "@/components/app/AddDropContext";
 
 interface Props {
@@ -41,25 +47,46 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** Pre-filled from an incoming share (image/text/URL). */
   share?: SharePayload | null;
-  /** Opens the AddDropSheet in a specific mode (link/note/document). */
-  onOpenAdvanced: (kind: "link" | "note" | "document") => void;
+  /** Desktop advanced-sheet fallback (kept for API compatibility). */
+  _onOpenAdvanced?: (kind: "link" | "note" | "document") => void;
 }
 
-export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }: Props) {
+type View = "menu" | "link" | "note" | "preview";
+
+interface PendingPhoto {
+  photo: CapturedPhoto;
+  fileName: string;
+  kind: "screenshot" | "image";
+}
+
+export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
+  const { t } = useTranslation();
   const { isAuthenticated, user } = useAuth();
   const userId = user?.id;
   const navigate = useNavigate();
 
+  const [view, setView] = useState<View>("menu");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [pending, setPending] = useState<PendingPhoto[]>([]);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState("");
   const [voice, setVoice] = useState<"idle" | "recording" | "paused">("idle");
   const [voiceMs, setVoiceMs] = useState(0);
   const recorderRef = useRef<VoiceRecorder | null>(null);
 
   useEffect(() => {
     if (open) {
+      setView("menu");
       setBusy(false);
+      setError(null);
       setProgress(null);
+      setPending([]);
+      setLinkUrl("");
+      setNoteTitle("");
+      setNoteBody("");
       setVoice("idle");
       setVoiceMs(0);
     }
@@ -67,16 +94,22 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
 
   const close = () => onOpenChange(false);
 
+  const notify = (message: string) => {
+    toast(message, { description: t("capture.savedDesc") });
+  };
+
   // -------------------------------------------------------------------------
-  // Upload pipeline (shared by all capture paths)
+  // Upload pipeline (shared by every capture path — one normalized flow)
   // -------------------------------------------------------------------------
 
-  const uploadFile = async (file: File | Blob, opts: { kind: "screenshot" | "image" | "document"; fileName?: string }) => {
+  const uploadFile = async (
+    file: Blob,
+    opts: { kind: "screenshot" | "image" | "document"; fileName?: string },
+  ) => {
     if (!isAuthenticated || !userId) return null;
-    // Optimize images before upload (saves mobile data, faster AI).
     let body: Blob = file;
     let contentType = file.type || "application/octet-stream";
-    if (file instanceof Blob && file.type.startsWith("image/")) {
+    if (file.type.startsWith("image/")) {
       try {
         const optimized = await optimizeImage(file);
         body = optimized.blob;
@@ -100,31 +133,18 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
     });
   };
 
-  const uploadCaptured = async (photo: CapturedPhoto) => {
-    if (photo.dataUrl) {
-      return uploadFile(dataUrlToBlob(photo.dataUrl), {
-        kind: "screenshot",
-        fileName: photo.displayName ?? "photo.jpg",
-      });
-    }
-    if (photo.path) {
-      const blob = await (await fetch(photo.path)).blob();
-      return uploadFile(blob, { kind: "screenshot", fileName: photo.displayName ?? "photo.jpg" });
-    }
-    return null;
-  };
-
-  const finishOne = (result: { duplicate?: boolean; dropId?: string } | null, index?: number) => {
+  const finishOne = (result: { duplicate?: boolean; dropId?: string } | null) => {
     haptic("success");
     if (result?.duplicate && result.dropId) {
-      toast("You already saved this", {
-        description: "DROP remembers duplicates — your memory stays clean.",
-      });
+      toast(t("capture.alreadySaved"), { description: t("capture.alreadySavedDesc") });
       return;
     }
-    toast(index !== undefined ? `Dropped item ${index + 1} ✓` : "Dropped ✓", {
-      description: "Saved instantly. DROP is understanding it…",
-    });
+    toast(t("capture.saved"), { description: t("capture.savedDesc") });
+  };
+
+  const goToDrop = (result: { duplicate?: boolean; dropId?: string } | null) => {
+    close();
+    if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
   };
 
   // -------------------------------------------------------------------------
@@ -136,14 +156,13 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
     setBusy(true);
     try {
       const photo = await takePhoto();
-      if (photo) {
-        const result = await uploadCaptured(photo);
-        finishOne(result);
-        close();
-        if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
-      }
+      if (!photo || !photo.dataUrl) return; // cancelled — sheet stays open
+      setPending([
+        { photo, fileName: photo.displayName ?? "photo.jpg", kind: "screenshot" },
+      ]);
+      setView("preview");
     } catch {
-      toast("Couldn't use the camera right now");
+      setError(t("capture.cameraFailed"));
     } finally {
       setBusy(false);
     }
@@ -154,33 +173,48 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
     setBusy(true);
     try {
       const photos = await pickPhotos(multiple);
-      if (photos.length === 0) return;
-      setProgress({ done: 0, total: photos.length });
-      const ids: string[] = [];
-      for (let i = 0; i < photos.length; i++) {
-        const photo = photos[i];
-        if (!photo) continue;
-        // From the native gallery the user picked real files; convert to Blob.
-        let file: Blob | null = null;
-        if (photo.dataUrl) file = dataUrlToBlob(photo.dataUrl);
-        else if (photo.path) file = await (await fetch(photo.path)).blob();
-        if (!file) continue;
-        const result = await uploadFile(file, {
-          kind: "screenshot",
-          fileName: photo.displayName ?? `photo-${i}.jpg`,
-        });
-        if (result?.dropId && result.duplicate !== true) ids.push(String(result.dropId));
-        setProgress({ done: i + 1, total: photos.length });
+      if (photos.length === 0) return; // cancelled — sheet stays open
+      setPending(
+        photos.map((p) => ({
+          photo: p,
+          fileName: p.displayName ?? `photo-${Date.now()}.jpg`,
+          kind: "image",
+        })),
+      );
+      setView("preview");
+    } catch {
+      setError(t("capture.galleryFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSavePreview = async () => {
+    if (!pending.length) return;
+    haptic("light");
+    setBusy(true);
+    setError(null);
+    setProgress({ done: 0, total: pending.length });
+    const ids: string[] = [];
+    try {
+      for (let i = 0; i < pending.length; i++) {
+        const p = pending[i];
+        const blob = await pickedFileToBlob(p.photo);
+        if (blob) {
+          const result = await uploadFile(blob, { kind: p.kind, fileName: p.fileName });
+          if (result?.dropId && result.duplicate !== true) ids.push(String(result.dropId));
+        }
+        setProgress({ done: i + 1, total: pending.length });
       }
       haptic("success");
-      toast(photos.length > 1 ? `Dropped ${photos.length} items ✓` : "Dropped ✓", {
-        description: "Saved instantly. DROP is understanding them now…",
-      });
-      setProgress(null);
+      toast(
+        pending.length > 1 ? `${t("capture.saved")} ×${pending.length}` : t("capture.saved"),
+        { description: t("capture.savedDesc") },
+      );
       close();
       if (ids.length) navigate(`/app/drop/${ids[0]}`);
-    } catch {
-      toast("Couldn't open the gallery");
+    } catch (err) {
+      setError(authErrorMessage(err, t("capture.galleryFailed")));
     } finally {
       setBusy(false);
       setProgress(null);
@@ -190,31 +224,61 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
   const onDocument = async () => {
     haptic("light");
     setBusy(true);
+    setError(null);
     try {
-      if (isNative()) {
-        const { FilePicker } = await import("@capawesome/capacitor-file-picker");
-        const res = await FilePicker.pickFiles({
-          limit: 1,
-          types: ["application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/*"],
+      const doc = await pickDocument();
+      if (!doc) return; // cancelled
+      if (doc.dataUrl) {
+        const result = await uploadFile(dataUrlToBlob(doc.dataUrl), {
+          kind: "document",
+          fileName: doc.name ?? "document.bin",
         });
-        const file = res.files?.[0];
-        if (file?.path) {
-          const blob = await (await fetch(file.path)).blob();
-          const result = await uploadFile(blob, {
-            kind: "document",
-            fileName: file.name,
-          });
-          finishOne(result);
-          close();
-          if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
-        }
-      } else {
-        onOpenAdvanced("document");
-        close();
+        finishOne(result);
+        goToDrop(result);
+      } else if (doc.path) {
+        const res = await fetch(doc.path);
+        const blob = await res.blob();
+        const result = await uploadFile(blob, { kind: "document", fileName: doc.name });
+        finishOne(result);
+        goToDrop(result);
       }
     } catch {
-      toast("Couldn't open the file picker");
+      setError(t("capture.documentFailed"));
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveLink = async () => {
+    if (!linkUrl.trim() || !userId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let url = linkUrl.trim();
+      if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+      const result = await dropService.create(userId, { kind: "link", url });
+      finishOne(result);
+      goToDrop(result);
+    } catch (err) {
+      setError(authErrorMessage(err, "Couldn't save that link."));
+      setBusy(false);
+    }
+  };
+
+  const saveNote = async () => {
+    if (!noteBody.trim() || !userId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await dropService.create(userId, {
+        kind: "note",
+        text: noteBody.trim(),
+        title: noteTitle.trim() || undefined,
+      });
+      finishOne(result);
+      goToDrop(result);
+    } catch (err) {
+      setError(authErrorMessage(err, "Couldn't save that note."));
       setBusy(false);
     }
   };
@@ -231,9 +295,7 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
       recorder.onTick = (ms) => setVoiceMs(ms);
       const ok = await recorder.start();
       if (!ok) {
-        toast("Microphone unavailable", {
-          description: "Check DROP's microphone permission in system settings.",
-        });
+        setError(t("capture.voiceFailed"));
         return;
       }
       setVoice("recording");
@@ -251,20 +313,18 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
     if (!recorder) return;
     const rec = await recorder.stop();
     setVoice("idle");
+    setVoiceMs(0);
     if (!rec) return;
     setBusy(true);
     try {
       const fileName = `voice-note-${new Date().toISOString().slice(0, 10)}.webm`;
       const result = await uploadFile(rec.blob, { kind: "document", fileName });
       finishOne(result);
-      close();
-      if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
+      goToDrop(result);
     } catch {
-      toast("Couldn't upload the voice note", {
-        description: "Your recording is safe — try again in a moment.",
-      });
-    } finally {
+      setError(t("capture.documentFailed"));
       setBusy(false);
+    } finally {
       recorderRef.current = null;
     }
   };
@@ -289,10 +349,11 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-3xl border-t-0 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
+          <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-border" />
           <SheetHeader className="px-0 text-left">
             <SheetTitle className="flex items-center gap-2 text-lg tracking-tight">
               <UploadCloud className="h-5 w-5 text-primary" />
-              Save to DROP
+              {t("capture.saveToDrop")}
             </SheetTitle>
             <SheetDescription className="text-sm">
               This was shared with DROP. Save it to your memory?
@@ -311,36 +372,42 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
             )}
             {share.url && (
               <div className="rounded-2xl border border-border/80 bg-muted/40 px-4 py-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Link</p>
-                <a href={share.url} className="mt-0.5 block truncate text-sm font-semibold text-primary">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  {t("capture.link")}
+                </p>
+                <p className="mt-0.5 block truncate text-sm font-semibold text-primary">
                   {share.url}
-                </a>
+                </p>
               </div>
             )}
             {share.text && (
               <div className="rounded-2xl border border-border/80 bg-muted/40 px-4 py-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Text</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  {t("capture.note")}
+                </p>
                 <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-sm">{share.text}</p>
               </div>
             )}
           </div>
 
+          {error && <InlineError message={error} />}
+
           <div className="mt-4 flex gap-2">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={close} disabled={busy}>
-              Not now
+              {t("capture.notNow")}
             </Button>
             <Button
               className="flex-[2] gap-2 rounded-xl font-semibold"
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
+                setError(null);
                 try {
                   haptic("light");
                   if (share.url && !share.imageDataUrl) {
                     const result = await dropService.create(userId ?? "", { kind: "link", url: share.url });
                     finishOne(result);
-                    close();
-                    if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
+                    goToDrop(result);
                     return;
                   }
                   if (share.imageDataUrl) {
@@ -349,26 +416,24 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
                       fileName: share.fileName ?? `shared-${Date.now()}.jpg`,
                     });
                     finishOne(result);
-                    close();
-                    if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
+                    goToDrop(result);
                     return;
                   }
                   if (share.text) {
                     const result = await dropService.create(userId ?? "", { kind: "note", text: share.text });
                     finishOne(result);
-                    close();
-                    if (result?.dropId && result.duplicate !== true) navigate(`/app/drop/${result.dropId}`);
+                    goToDrop(result);
                     return;
                   }
-                } catch {
-                  toast("Couldn't save that");
+                } catch (err) {
+                  setError(authErrorMessage(err, "Couldn't save that."));
                 } finally {
                   setBusy(false);
                 }
               }}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-              Save to DROP
+              {t("capture.saveToDrop")}
             </Button>
           </div>
         </SheetContent>
@@ -377,87 +442,196 @@ export function MobileCaptureSheet({ open, onOpenChange, share, onOpenAdvanced }
   }
 
   // -------------------------------------------------------------------------
-  // Capture menu
+  // Main sheet
   // -------------------------------------------------------------------------
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-3xl border-t-0 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
+        <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-border" />
+
         <SheetHeader className="px-0 text-left">
-          <SheetTitle className="text-lg tracking-tight">Drop Something</SheetTitle>
-          <SheetDescription className="text-sm">
-            Capture anything. DROP figures out the rest.
-          </SheetDescription>
+          <div className="flex items-center gap-2">
+            {view !== "menu" && (
+              <button
+                type="button"
+                onClick={() => setView("menu")}
+                className="-ml-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted"
+                aria-label={t("common.back")}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            )}
+            <div>
+              <SheetTitle className="text-lg tracking-tight">
+                {view === "link" ? t("capture.linkTitle") : view === "note" ? t("capture.noteTitle") : view === "preview" ? t("capture.saveToDrop") : t("capture.title")}
+              </SheetTitle>
+              <SheetDescription className="text-sm">
+                {view === "menu" ? t("capture.subtitle") : view === "link" ? t("capture.linkSubtitle") : view === "note" ? t("capture.noteHint") : t("capture.savedDesc")}
+              </SheetDescription>
+            </div>
+          </div>
         </SheetHeader>
 
-        {progress && (
-          <div className="mt-2 rounded-2xl border border-primary/25 bg-accent/50 px-4 py-3">
-            <p className="text-sm font-semibold">
-              Dropping {progress.done} of {progress.total}…
-            </p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-300"
-                style={{ width: `${(progress.done / progress.total) * 100}%` }}
+        {/* Link editor */}
+        {view === "link" && (
+          <div className="mt-4 space-y-3">
+            <div className="relative">
+              <Link2 className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+              <Input
+                autoFocus
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder={t("capture.linkPlaceholder")}
+                inputMode="url"
+                autoCapitalize="none"
+                className="h-13 rounded-2xl py-3.5 pl-11 pr-4 text-[15px]"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void saveLink();
+                }}
               />
             </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              You can leave this screen — drops keep processing in the background.
-            </p>
+            {error && <InlineError message={error} />}
+            <Button
+              className="h-[52px] w-full gap-2 rounded-2xl font-semibold"
+              disabled={!linkUrl.trim() || busy}
+              onClick={() => void saveLink()}
+            >
+              {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Link2 className="h-5 w-5" />}
+              {t("capture.saveLink")}
+            </Button>
           </div>
         )}
 
-        {voice !== "idle" ? (
-          <div className="mt-3 rounded-3xl border border-rose-500/25 bg-rose-500/5 p-5 text-center">
-            <div className="relative mx-auto flex h-16 w-16 items-center justify-center">
-              {voice === "recording" && (
-                <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/20" />
-              )}
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-300">
-                <Mic className="h-6 w-6" />
-              </span>
-            </div>
-            <p className="mt-3 font-bold tracking-tight">
-              {voice === "recording" ? "Recording…" : "Paused"}
-            </p>
-            <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums">{formatMs(voiceMs)}</p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <Button variant="ghost" size="icon" className="rounded-full" onClick={cancelVoice} aria-label="Cancel">
-                <Square className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                className="h-14 w-14 rounded-full"
-                onClick={() => void toggleVoice()}
-                aria-label={voice === "recording" ? "Pause" : "Resume"}
-              >
-                {voice === "recording" ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
-              </Button>
-              <Button variant="outline" size="icon" className="rounded-full" onClick={() => void stopVoice()} aria-label="Stop and save">
-                <UploadCloud className="h-4 w-4 text-primary" />
-              </Button>
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Stop to save · audio stays in your private library
-            </p>
-          </div>
-        ) : (
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
-            <ActionButton icon={Camera} label="Take Photo" hint="Use the camera" onClick={() => void onTakePhoto()} disabled={busy} />
-            <ActionButton icon={ImagePlus} label="Choose Photo" hint="From your library" onClick={() => void onPickPhotos(false)} disabled={busy} />
-            <ActionButton icon={StickyNote} label="Gallery (multi)" hint="Pick several screenshots" onClick={() => void onPickPhotos(true)} disabled={busy} />
-            <ActionButton icon={Mic} label="Voice Note" hint="Hands-free memory" onClick={() => void toggleVoice()} disabled={busy} />
-            <ActionButton icon={Link2} label="Paste Link" hint="URL, post, article" onClick={() => { haptic("light"); onOpenAdvanced("link"); close(); }} disabled={busy} />
-            <ActionButton icon={StickyNote} label="Write Note" hint="A quick thought" onClick={() => { haptic("light"); onOpenAdvanced("note"); close(); }} disabled={busy} />
-            <ActionButton icon={FileUp} label="Document" hint="PDF, DOCX, text" onClick={() => void onDocument()} disabled={busy} />
+        {/* Note editor */}
+        {view === "note" && (
+          <div className="mt-4 space-y-3">
+            <Input
+              autoFocus
+              value={noteTitle}
+              onChange={(e) => setNoteTitle(e.target.value)}
+              placeholder={t("capture.noteTitlePlaceholder")}
+              className="h-13 rounded-2xl py-3.5 px-4 text-[15px]"
+            />
+            <Textarea
+              value={noteBody}
+              onChange={(e) => setNoteBody(e.target.value)}
+              placeholder={t("capture.noteBodyPlaceholder")}
+              rows={5}
+              className="rounded-2xl p-4 text-[15px] leading-relaxed"
+            />
+            {error && <InlineError message={error} />}
+            <Button
+              className="h-[52px] w-full gap-2 rounded-2xl font-semibold"
+              disabled={!noteBody.trim() || busy}
+              onClick={() => void saveNote()}
+            >
+              {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <StickyNote className="h-5 w-5" />}
+              {t("capture.saveNote")}
+            </Button>
           </div>
         )}
+
+        {/* Photo preview — review before saving */}
+        {view === "preview" && (
+          <div className="mt-4 space-y-3">
+            <div className="overflow-hidden rounded-2xl border border-border/80 bg-black/40">
+              <img
+                src={pending[0]?.photo.dataUrl ?? ""}
+                alt="Preview"
+                className="max-h-72 w-full object-contain"
+              />
+            </div>
+            <p className="truncate px-1 text-xs text-muted-foreground">
+              {pending.length > 1 ? `${pending.length} ${t("capture.photos")}` : pending[0]?.fileName}
+            </p>
+            {progress && (
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-300"
+                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                />
+              </div>
+            )}
+            {error && <InlineError message={error} />}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="h-[52px] flex-1 rounded-2xl"
+                disabled={busy}
+                onClick={() => {
+                  setPending([]);
+                  setView("menu");
+                }}
+              >
+                {t("capture.notNow")}
+              </Button>
+              <Button
+                className="h-[52px] flex-[2] gap-2 rounded-2xl font-semibold"
+                disabled={busy}
+                onClick={() => void onSavePreview()}
+              >
+                {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <UploadCloud className="h-5 w-5" />}
+                {t("capture.saveToDrop")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Capture menu / voice panel */}
+        {view === "menu" &&
+          (voice !== "idle" ? (
+            <div className="mt-3 rounded-3xl border border-rose-500/25 bg-rose-500/5 p-5 text-center">
+              <div className="relative mx-auto flex h-16 w-16 items-center justify-center">
+                {voice === "recording" && (
+                  <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/20" />
+                )}
+                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-300">
+                  <Mic className="h-6 w-6" />
+                </span>
+              </div>
+              <p className="mt-3 font-bold tracking-tight">
+                {voice === "recording" ? t("capture.voice") : t("capture.note")}
+              </p>
+              <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums">{formatMs(voiceMs)}</p>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={cancelVoice} aria-label={t("common.cancel")}>
+                  <Square className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  className="h-14 w-14 rounded-full"
+                  onClick={() => void toggleVoice()}
+                  aria-label={voice === "recording" ? t("common.back") : t("common.next")}
+                >
+                  {voice === "recording" ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                </Button>
+                <Button variant="outline" size="icon" className="rounded-full" onClick={() => void stopVoice()} aria-label={t("capture.saveToDrop")}>
+                  <UploadCloud className="h-4 w-4 text-primary" />
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t("capture.voiceHint")} · {t("capture.subtitle")}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {error && <InlineError message={error} />}
+              <CaptureRow icon={Camera} label={t("capture.takePhoto")} hint={t("capture.takePhotoHint")} onClick={() => void onTakePhoto()} />
+              <CaptureRow icon={ImagePlus} label={t("capture.photos")} hint={t("capture.photosHint")} onClick={() => void onPickPhotos(false)} />
+              <CaptureRow icon={Images} label={t("capture.screenshot")} hint={t("capture.screenshotHint")} onClick={() => void onPickPhotos(false)} />
+              <CaptureRow icon={Link2} label={t("capture.link")} hint={t("capture.linkHint")} onClick={() => { haptic("light"); setView("link"); }} />
+              <CaptureRow icon={StickyNote} label={t("capture.note")} hint={t("capture.noteHint")} onClick={() => { haptic("light"); setView("note"); }} />
+              <CaptureRow icon={FileUp} label={t("capture.document")} hint={t("capture.documentHint")} onClick={() => void onDocument()} />
+              <CaptureRow icon={Mic} label={t("capture.voice")} hint={t("capture.voiceHint")} onClick={() => void toggleVoice()} />
+            </div>
+          ))}
       </SheetContent>
     </Sheet>
   );
 }
 
-function ActionButton({
+function CaptureRow({
   icon: Icon,
   label,
   hint,
@@ -475,15 +649,23 @@ function ActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex cursor-pointer items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 text-left transition-all hover:border-primary/40 hover:bg-accent/40 active:scale-[0.98] disabled:opacity-50"
+      className="flex w-full cursor-pointer items-center gap-3.5 rounded-2xl border border-border/70 bg-card px-4 py-3 text-left transition-all hover:border-primary/35 hover:bg-accent/40 active:scale-[0.99] disabled:opacity-50"
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
         <Icon className="h-5 w-5" />
       </span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold leading-tight">{label}</span>
-        <span className="block truncate text-[11px] text-muted-foreground">{hint}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold leading-tight">{label}</span>
+        <span className="block truncate text-xs text-muted-foreground">{hint}</span>
       </span>
     </button>
+  );
+}
+
+function InlineError({ message }: { message: string }) {
+  return (
+    <p className="rounded-2xl bg-red-500/10 px-4 py-2.5 text-[13px] font-medium leading-snug text-red-600 dark:text-red-300">
+      {message}
+    </p>
   );
 }
