@@ -22,9 +22,12 @@ public class MainActivity extends BridgeActivity {
         // Register DROP's app-local native plugins. DropPermissions provides
         // real runtime permission state (incl. permanently-denied detection),
         // the RECORD_AUDIO request path, and the "Open Settings" deep link;
-        // IncomingShare handles ACTION_SEND share intents. Without these
-        // registerPlugin calls the plugins are never reachable from JS.
+        // DropPhotoPicker opens the system Photo Picker (API 33+) or the
+        // permissionless ACTION_GET_CONTENT gallery (older) with no storage
+        // permission; IncomingShare handles ACTION_SEND share intents. Without
+        // these registerPlugin calls the plugins are never reachable from JS.
         registerPlugin(DropPermissionsPlugin.class);
+        registerPlugin(DropPhotoPickerPlugin.class);
         registerPlugin(IncomingSharePlugin.class);
         super.onCreate(savedInstanceState);
     }

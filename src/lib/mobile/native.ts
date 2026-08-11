@@ -7,7 +7,7 @@
 // Nothing in this file may throw on the web — native imports are guarded by
 // `isNative()` checks.
 
-import { isAndroid, isNative } from "./platform";
+import { isAndroid, isNative, platformName } from "./platform";
 import { getPermissionState, requestPermission, openAppSettings } from "./permissions";
 
 export { isNative, isAndroid, openAppSettings };
@@ -134,15 +134,85 @@ export async function takePhoto(): Promise<CapturedPhoto | null> {
 }
 
 /**
- * Pick image(s) from the device library. Returns [] when the user cancels;
- * throws a friendly Error when the picker genuinely fails — failures are
- * never swallowed silently.
+ * Development-only diagnostics for the picker (never shipped to users).
+ * Logs platform, native status, Android SDK level, plugin availability and
+ * the exact picker method about to be called.
+ */
+async function logPickerDiagnostics(method: string): Promise<void> {
+  if (!import.meta.env.DEV) return;
+  const info: Record<string, unknown> = { method, platform: platformName(), native: isNative() };
+  if (isAndroid()) {
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      const plugin = (Capacitor as unknown as { Plugins: Record<string, unknown> }).Plugins
+        ?.DropPermissions as { getStatuses?: () => Promise<{ sdkInt?: number }> } | undefined;
+      const statuses = await plugin?.getStatuses?.();
+      info.sdkInt = statuses?.sdkInt;
+    } catch {
+      info.sdkInt = undefined;
+    }
+  }
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    const plugins = (Capacitor as unknown as { Plugins: Record<string, unknown> }).Plugins ?? {};
+    info.plugins = {
+      DropPhotoPicker: Boolean(plugins.DropPhotoPicker),
+      Camera: Boolean(plugins.Camera),
+      FilePicker: Boolean(plugins.FilePicker),
+    };
+  } catch {
+    info.plugins = "unreadable";
+  }
+  // eslint-disable-next-line no-console
+  console.info("[DROP picker]", info);
+}
+
+/**
+ * App's own native Android photo picker (DropPhotoPicker plugin): system
+ * Photo Picker on API 33+, permissionless ACTION_GET_CONTENT below. Returns:
+ *  - CapturedPhoto[] when the user picked files,
+ *  - [] when the user cancelled (NOT an error),
+ *  - null when the plugin is missing or genuinely failed (caller falls back).
+ */
+async function pickWithDropPhotoPicker(multiple: boolean, limit: number): Promise<CapturedPhoto[] | null> {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    const plugin = (Capacitor as unknown as { Plugins: Record<string, unknown> }).Plugins
+      ?.DropPhotoPicker as
+      | { pick: (opts: { multiple: boolean; limit: number }) => Promise<{ photos?: Array<{ dataUrl?: string; mimeType?: string; displayName?: string; size?: number }> }> }
+      | undefined;
+    if (!plugin) return null;
+    const res = await plugin.pick({ multiple, limit });
+    return (res.photos ?? []).map((p) => ({
+      dataUrl: p.dataUrl,
+      format: (p.mimeType ?? "image/jpeg").split("/")[1],
+      displayName: p.displayName ?? `photo-${Date.now()}.jpg`,
+      size: p.size,
+    }));
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn("[DROP picker] DropPhotoPicker failed:", err);
+    }
+    return null;
+  }
+}
+
+/**
+ * Pick image(s) from the device library.
  *
- * Single pick uses the Capacitor Camera plugin's photo picker (the Android
- * system Photo Picker on 13+) which returns base64 directly — no
- * content:// fetch and no storage-permission dance. Multi pick uses the
- * @capawesome file picker, reading each file through the plugin's documented
- * `fetch(path)` flow.
+ * PHOTOS NEED NO PERMISSION anywhere in DROP — this function never requests
+ * READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE and never sends the user to
+ * Settings to choose an image. Order of attempts:
+ *
+ *   Android: app's native DropPhotoPicker (system Photo Picker on API 33+,
+ *            ACTION_GET_CONTENT below) → Camera plugin picker → FilePicker
+ *   iOS:     Camera plugin picker (PHPicker) → FilePicker
+ *   Web:     <input type="file">
+ *
+ * Returns [] when the user cancels (cancellation is NOT an error). Throws a
+ * friendly Error only when every picker genuinely failed — the original
+ * exception is logged in development, never replaced with a permission hint.
  */
 export async function pickPhotos(multiple = false): Promise<CapturedPhoto[]> {
   if (!isNative()) {
@@ -150,37 +220,45 @@ export async function pickPhotos(multiple = false): Promise<CapturedPhoto[]> {
     return file ? [file] : [];
   }
 
-  // Photos need NO permission: on Android 13+ this path uses the system
-  // Photo Picker, and the Capacitor Camera plugin handles the legacy gallery
-  // on older versions. If the OS picker can't open, fall back to the
-  // file-picker plugin. Cancellation returns [] — never an error.
-  if (!multiple) {
-    try {
-      const { Camera, CameraSource, CameraResultType } = await import("@capacitor/camera");
-      const photo = await Camera.getPhoto({
-        source: CameraSource.Photos,
-        resultType: CameraResultType.DataUrl,
-        quality: 92,
-        correctOrientation: true,
-      });
-      if (!photo?.dataUrl) return []; // user cancelled
-      return [
-        {
-          dataUrl: photo.dataUrl,
-          format: photo.format,
-          displayName: `photo-${Date.now()}.${photo.format ?? "jpg"}`,
-        },
-      ];
-    } catch (err) {
-      if (err instanceof Error && isCancelMessage(err.message)) return [];
-      // picker genuinely unavailable — try the file picker below
-    }
+  if (isAndroid()) {
+    await logPickerDiagnostics(multiple ? "DropPhotoPicker.pick(multiple)" : "DropPhotoPicker.pick(single)");
+    const picked = await pickWithDropPhotoPicker(multiple, multiple ? 0 : 1);
+    if (picked !== null) return picked; // resolved or cancelled
+    // plugin unavailable/failed → fall through to the Capacitor picker
+  } else {
+    await logPickerDiagnostics("Camera.getPhoto(Photos)");
   }
 
-  const { FilePicker } = await import("@capawesome/capacitor-file-picker");
   try {
+    const { Camera, CameraSource, CameraResultType } = await import("@capacitor/camera");
+    const photo = await Camera.getPhoto({
+      source: CameraSource.Photos,
+      resultType: CameraResultType.DataUrl,
+      quality: 92,
+      correctOrientation: true,
+    });
+    if (!photo?.dataUrl) return []; // user cancelled
+    return [
+      {
+        dataUrl: photo.dataUrl,
+        format: photo.format,
+        displayName: `photo-${Date.now()}.${photo.format ?? "jpg"}`,
+      },
+    ];
+  } catch (err) {
+    if (err instanceof Error && isCancelMessage(err.message)) return [];
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn("[DROP picker] Camera plugin picker failed:", err);
+    }
+    // picker genuinely unavailable — try the file picker below
+  }
+
+  try {
+    const { FilePicker } = await import("@capawesome/capacitor-file-picker");
     const res = await FilePicker.pickImages({ limit: multiple ? 0 : 1 });
     const files = (res.files ?? []).filter((f) => f.path);
+    if (!files.length) return []; // cancelled
     return files.map((f) => ({
       path: f.path as string,
       displayName: f.name,
@@ -189,10 +267,13 @@ export async function pickPhotos(multiple = false): Promise<CapturedPhoto[]> {
     }));
   } catch (err) {
     if (err instanceof Error && isCancelMessage(err.message)) return [];
-    // Neither the photo picker nor the file picker could open. The user is
-    // told the truth and the app keeps working — nothing here touches
-    // storage permissions, so there is no "check photo permission" dead-end.
-    throw new Error("Couldn't open the photo library on this device.");
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn("[DROP picker] FilePicker failed:", err);
+    }
+    // Every picker failed for real. The user is told the truth — this is NOT
+    // a permission problem, so no "check photo permission" dead-end appears.
+    throw new Error("Couldn't open the photo picker on this device.");
   }
 }
 

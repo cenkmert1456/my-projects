@@ -108,10 +108,9 @@ export default {
     noteTitlePlaceholder: "Title",
     noteBodyPlaceholder: "Write something down…",
     saveNote: "Save note",
-    galleryFailed:
-      "Couldn't open your photo library. Check DROP's photo permission in system settings.",
+    galleryFailed: "Couldn't open the photo picker. Please try again.",
     cameraFailed: "Couldn't use the camera right now.",
-    permissionDenied: "Photos access is needed to choose an image.",
+    permissionDenied: "Couldn't open the photo picker. Please try again.",
     documentFailed: "Couldn't open the file picker.",
     voiceFailed: "Microphone unavailable — check DROP's microphone permission.",
   },
