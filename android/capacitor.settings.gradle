@@ -57,4 +57,4 @@ include ':capawesome-capacitor-file-picker'
 project(':capawesome-capacitor-file-picker').projectDir = new File('../node_modules/@capawesome/capacitor-file-picker/android')
 
 include ':drop-ai'
-project(':drop-ai').projectDir = new File('../packages/drop-ai/android')
+project(':drop-ai').projectDir = new File('../node_modules/@drop/ai/android')

@@ -23,6 +23,7 @@ import type {
 import { rowToDrop, rowToDropList, buildSearchText } from "./mappers";
 import { analyzeText } from "./analyze";
 import { dropEmbedText } from "@/lib/embed";
+import { cacheDrops } from "@/lib/local-cache";
 
 export const EMBEDDING_PROVIDER = "demo";
 
@@ -87,7 +88,9 @@ export const dropService = {
       .order("saved_at", { ascending: false })
       .limit(limit);
     if (error) throw error;
-    return rowToDropList(data ?? []);
+    const drops = rowToDropList(data ?? []);
+    cacheDrops(userId, drops);
+    return drops;
   },
 
   async listAll(userId: string, includeArchived = false): Promise<Drop[]> {
@@ -100,7 +103,9 @@ export const dropService = {
     if (!includeArchived) query = query.neq("archived", true);
     const { data, error } = await query;
     if (error) throw error;
-    return rowToDropList(data ?? []);
+    const drops = rowToDropList(data ?? []);
+    cacheDrops(userId, drops);
+    return drops;
   },
 
   async get(userId: string, id: string): Promise<{ drop: Drop; related: Drop[] } | null> {

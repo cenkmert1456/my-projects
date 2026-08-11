@@ -8,7 +8,7 @@ import { searchService } from "@/lib/services";
 import { authErrorMessage } from "@/lib/supabase/auth-errors";
 import { timeAgo } from "@/lib/format";
 import { KIND_META } from "@/lib/drop-meta";
-import { ChevronRight, Loader2, Search as SearchIcon, Sparkles, X } from "lucide-react";
+import { ChevronRight, Loader2, Search as SearchIcon, Sparkles, WifiOff, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -49,6 +49,7 @@ export default function Search() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(0);
+  const [fromCache, setFromCache] = useState(false);
   const { data: recentSearches } = useRealtimeQuery(
     () => searchService.listSearchHistory(uid as string, 8),
     { table: "search_history", userId: uid },
@@ -82,8 +83,9 @@ export default function Search() {
       });
       setHits(res.results);
       setCount(res.count);
+      setFromCache(Boolean(res.fromCache));
     } catch (err) {
-      setError(authErrorMessage(err, "Couldn't search right now."));
+      setError(authErrorMessage(err, "Search is having trouble right now."));
     } finally {
       setLoading(false);
     }
@@ -195,10 +197,25 @@ export default function Search() {
         </div>
       )}
 
-      {error && !loading && <StateError message={error} onRetry={() => void runSearch(query)} />}
+      {error && !loading && (
+        <div className="space-y-3">
+          <StateError message={error} onRetry={() => void runSearch(query)} />
+          {hits && hits.length > 0 && (
+            <p className="text-center text-xs text-muted-foreground">
+              {t("search.showingCached")}
+            </p>
+          )}
+        </div>
+      )}
 
       {!loading && hits && hits.length > 0 && (
         <div>
+          {fromCache && (
+            <div className="mb-3 flex items-center gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-2.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+              <WifiOff className="h-3.5 w-3.5 shrink-0" />
+              {t("search.offlineResults")}
+            </div>
+          )}
           <p className="mb-3 text-sm text-muted-foreground">
             {count} {t("search.results")} — {hits.filter((h) => h.semantic).length} matched by meaning
           </p>

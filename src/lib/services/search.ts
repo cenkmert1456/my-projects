@@ -9,6 +9,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { cosineSimilarity, dropEmbedText } from "@/lib/embed";
+import { loadCachedDrops } from "@/lib/local-cache";
 import type {
   AskResult,
   AskSource,
@@ -152,7 +153,7 @@ export const searchService = {
     userId: string,
     query: string,
     filters?: SearchFilters,
-  ): Promise<{ results: SearchHit[]; count: number }> {
+  ): Promise<{ results: SearchHit[]; count: number; fromCache?: boolean }> {
     const f = filters ?? {};
     const timeWindow = timeWindowFromQuery(query);
     if (timeWindow) {
@@ -161,11 +162,26 @@ export const searchService = {
     }
     const limit = Math.min(f.limit ?? 30, 50);
 
+    // Layered search (Part P): fetch from Supabase; if the backend is
+    // unreachable/misconfigured, fall back to the on-device snapshot so
+    // search never dies entirely. Search stays scoped to the current user in
+    // both layers.
     let drops: Drop[];
-    if (f.collectionId) {
-      drops = await dropService.byCollection(userId, f.collectionId);
-    } else {
-      drops = await dropService.listAll(userId, f.includeArchived);
+    let fromCache = false;
+    try {
+      if (f.collectionId) {
+        drops = await dropService.byCollection(userId, f.collectionId);
+      } else {
+        drops = await dropService.listAll(userId, f.includeArchived);
+      }
+    } catch (err) {
+      const cached = loadCachedDrops(userId);
+      if (cached && cached.length) {
+        drops = cached;
+        fromCache = true;
+      } else {
+        throw err;
+      }
     }
     drops = drops.filter((d) => !d.deletedAt);
 
@@ -213,7 +229,7 @@ export const searchService = {
       }
     }
 
-    return { results, count: filtered.length };
+    return { results, count: filtered.length, fromCache };
   },
 
   /** Ask DROP — retrieve the user's relevant Drops, then synthesize with the

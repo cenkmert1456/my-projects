@@ -80,4 +80,45 @@ export const storageService = {
     if (error || !data) return null;
     return data;
   },
+
+  /**
+   * Real storage accounting for one user: walks their folder (cap 60 drop
+   * folders) and sums object sizes from the Storage API. Returns null when
+   * the bucket is missing/unreachable so the UI can degrade gracefully.
+   */
+  async usage(
+    userId: string,
+  ): Promise<{ bytes: number; files: number; largest: Array<{ name: string; bytes: number }> } | null> {
+    try {
+      const { data: folders, error: folderError } = await supabase.storage
+        .from(BUCKET)
+        .list(userId, { limit: 100, sortBy: { column: "name", order: "asc" } });
+      if (folderError || !folders) return null;
+      const all: Array<{ name: string; bytes: number }> = [];
+      const dirs = folders.filter((f) => !f.id).slice(0, 60);
+      if (!dirs.length) {
+        // Files may sit directly under the user folder (flat uploads).
+        for (const f of folders.filter((f) => f.id)) {
+          const bytes = Number((f.metadata as { size?: number } | null)?.size ?? 0);
+          if (bytes > 0) all.push({ name: f.name, bytes });
+        }
+      } else {
+        for (const dir of dirs) {
+          const { data: files, error: fileError } = await supabase.storage
+            .from(BUCKET)
+            .list(`${userId}/${dir.name}`, { limit: 100 });
+          if (fileError || !files) continue;
+          for (const f of files.filter((f) => f.id)) {
+            const bytes = Number((f.metadata as { size?: number } | null)?.size ?? 0);
+            if (bytes > 0) all.push({ name: `${dir.name}/${f.name}`, bytes });
+          }
+        }
+      }
+      const bytes = all.reduce((sum, f) => sum + f.bytes, 0);
+      all.sort((a, b) => b.bytes - a.bytes);
+      return { bytes, files: all.length, largest: all.slice(0, 5) };
+    } catch {
+      return null;
+    }
+  },
 };

@@ -8,6 +8,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from "./client";
+import { Capacitor } from "@capacitor/core";
 
 const SUPABASE_URL =
   (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
@@ -29,7 +30,7 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ result: T; ms: number }
   return { result, ms: Date.now() - start };
 }
 
-export async function checkBackendHealth(): Promise<BackendHealth> {
+export async function checkBackendHealth(userId?: string | null): Promise<BackendHealth> {
   const diagnostics: string[] = [];
   const base: BackendHealth = {
     ok: false,
@@ -95,5 +96,48 @@ export async function checkBackendHealth(): Promise<BackendHealth> {
   }
 
   base.ok = base.auth === "ok" && base.database === "ok" && base.storage === "ok";
+
+  // Signed-in device diagnostics (Part U) — exact queries the screens run, so
+  // a "Your memory couldn't load" screen can be traced to the real cause.
+  if (userId) {
+    try {
+      const { data: profile, error: pe } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .eq("id", userId)
+        .maybeSingle();
+      diagnostics.push(pe ? `profile query → ${pe.message}` : profile ? `profile query → ok (${profile.name ?? "no name"})` : "profile query → no row");
+    } catch (e) {
+      diagnostics.push(`profile query → ${e instanceof Error ? e.message : "failed"}`);
+    }
+    try {
+      const { data, error: de } = await supabase.from("drops").select("id").eq("user_id", userId).limit(1);
+      diagnostics.push(de ? `drops query → ${de.message}` : `drops query → ok (${(data ?? []).length} sample)`);
+    } catch (e) {
+      diagnostics.push(`drops query → ${e instanceof Error ? e.message : "failed"}`);
+    }
+    try {
+      const { data, error: se } = await supabase.from("search_history").select("id").eq("user_id", userId).limit(1);
+      diagnostics.push(se ? `search_history query → ${se.message}` : `search_history query → ok (${(data ?? []).length} sample)`);
+    } catch (e) {
+      diagnostics.push(`search_history query → ${e instanceof Error ? e.message : "failed"}`);
+    }
+  }
+
+  // Native plugin availability — a missing native implementation surfaces
+  // here instead of failing capture flows silently.
+  try {
+    if (typeof Capacitor !== "undefined" && Capacitor.isNativePlatform()) {
+      const plugs = (Capacitor as unknown as { Plugins: Record<string, unknown> }).Plugins ?? {};
+      const present: string[] = [];
+      for (const name of ["Camera", "FilePicker", "LocalNotifications", "DropPermissions", "IncomingShare", "Haptics", "Network", "App"]) {
+        if (plugs[name]) present.push(name);
+      }
+      diagnostics.push(`native plugins → ${present.join(", ") || "none found"}`);
+    }
+  } catch {
+    // ignore
+  }
+
   return base;
 }

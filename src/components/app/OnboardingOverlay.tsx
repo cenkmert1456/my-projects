@@ -31,7 +31,7 @@ export function OnboardingOverlay() {
   // The overlay stays mounted while the user is signed in; it decides its own
   // visibility from the reactive user record. This lets AnimatePresence finish
   // the exit animation cleanly.
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const open = user ? user.onboardingDone !== true : false;
 
   const [step, setStep] = useState(0);
@@ -42,6 +42,10 @@ export function OnboardingOverlay() {
     try {
       if (user?.id) {
         await profileService.updateProfile(user.id, { onboardingDone: true });
+        // Refresh the reactive user record so this overlay closes AND the
+        // first-launch permission setup (which waits for onboarding to
+        // complete) can appear.
+        await refreshProfile();
       }
     } finally {
       setBusy(false);

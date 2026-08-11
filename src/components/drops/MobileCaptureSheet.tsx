@@ -21,6 +21,8 @@ import {
   Mic,
   Pause,
   Play,
+  RefreshCw,
+  Settings,
   Square,
   StickyNote,
   UploadCloud,
@@ -34,6 +36,9 @@ import {
   takePhoto,
   pickedFileToBlob,
   pickDocument,
+  openAppSettings,
+  requestPermission,
+  DropPermissionError,
   type CapturedPhoto,
 } from "@/lib/mobile/native";
 import { optimizeImage, dataUrlToBlob } from "@/lib/mobile/image";
@@ -68,6 +73,7 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
   const [view, setView] = useState<View>("menu");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<DropPermissionError | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [pending, setPending] = useState<PendingPhoto[]>([]);
   const [linkUrl, setLinkUrl] = useState("");
@@ -82,6 +88,7 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
       setView("menu");
       setBusy(false);
       setError(null);
+      setPermissionError(null);
       setProgress(null);
       setPending([]);
       setLinkUrl("");
@@ -154,6 +161,8 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
   const onTakePhoto = async () => {
     haptic("light");
     setBusy(true);
+    setError(null);
+    setPermissionError(null);
     try {
       const photo = await takePhoto();
       if (!photo || !photo.dataUrl) return; // cancelled — sheet stays open
@@ -161,8 +170,17 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
         { photo, fileName: photo.displayName ?? "photo.jpg", kind: "screenshot" },
       ]);
       setView("preview");
-    } catch {
-      setError(t("capture.cameraFailed"));
+    } catch (err) {
+      if (err instanceof DropPermissionError) {
+        setPermissionError(err);
+        setError(
+          err.permanent
+            ? t("permissions.cameraDisabled")
+            : t("permissions.cameraNeeded"),
+        );
+      } else {
+        setError(t("capture.cameraFailed"));
+      }
     } finally {
       setBusy(false);
     }
@@ -290,6 +308,16 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
   const toggleVoice = async () => {
     if (voice === "idle") {
       haptic("light");
+      setError(null);
+      setPermissionError(null);
+      // Microphone is a real runtime permission — ask contextually, before
+      // recording, and surface permanent denial with an Open Settings path.
+      const mic = await requestPermission("microphone");
+      if (mic.status !== "granted") {
+        setPermissionError(new DropPermissionError("microphone", mic.permanent));
+        setError(mic.permanent ? t("permissions.micDisabled") : t("permissions.micNeeded"));
+        return;
+      }
       const recorder = new VoiceRecorder();
       recorderRef.current = recorder;
       recorder.onTick = (ms) => setVoiceMs(ms);
@@ -616,7 +644,16 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
             </div>
           ) : (
             <div className="mt-3 space-y-2">
-              {error && <InlineError message={error} />}
+              {error &&
+                (permissionError ? (
+                  <PermissionErrorBlock
+                    err={permissionError}
+                    message={error}
+                    onRetry={permissionError.kind === "microphone" ? () => void toggleVoice() : () => void onTakePhoto()}
+                  />
+                ) : (
+                  <InlineError message={error} />
+                ))}
               <CaptureRow icon={Camera} label={t("capture.takePhoto")} hint={t("capture.takePhotoHint")} onClick={() => void onTakePhoto()} />
               <CaptureRow icon={ImagePlus} label={t("capture.photos")} hint={t("capture.photosHint")} onClick={() => void onPickPhotos(false)} />
               <CaptureRow icon={Images} label={t("capture.screenshot")} hint={t("capture.screenshotHint")} onClick={() => void onPickPhotos(false)} />
@@ -667,5 +704,46 @@ function InlineError({ message }: { message: string }) {
     <p className="rounded-2xl bg-red-500/10 px-4 py-2.5 text-[13px] font-medium leading-snug text-red-600 dark:text-red-300">
       {message}
     </p>
+  );
+}
+
+/** Permission denial — real recovery actions instead of a dead-end toast. */
+function PermissionErrorBlock({
+  err,
+  message,
+  onRetry,
+}: {
+  err: DropPermissionError;
+  message: string;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2">
+      <p className="rounded-2xl bg-amber-500/10 px-4 py-2.5 text-[13px] font-medium leading-snug text-amber-700 dark:text-amber-300">
+        {message}
+      </p>
+      <div className="flex gap-2">
+        {err.permanent ? (
+          <Button
+            variant="outline"
+            className="h-10 flex-1 gap-1.5 rounded-xl text-[13px] font-semibold"
+            onClick={() => void openAppSettings()}
+          >
+            <Settings className="h-4 w-4" />
+            {t("permissions.openSettings")}
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            className="h-10 flex-1 gap-1.5 rounded-xl text-[13px] font-semibold"
+            onClick={onRetry}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {t("permissions.tryAgain")}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

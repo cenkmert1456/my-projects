@@ -7,6 +7,7 @@ import { useRealtimeQuery } from "@/hooks/use-realtime-query";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { collectionService, dropService } from "@/lib/services";
 import { greetingKey } from "@/lib/format";
+import { KIND_META } from "@/lib/drop-meta";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import {
@@ -22,8 +23,9 @@ import {
   StickyNote,
   FolderHeart,
 } from "lucide-react";
-import { useContext, useMemo } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { loadRecentlyViewed, type RecentlyViewedEntry } from "@/lib/recently-viewed";
 
 const QUICK_ACTIONS = [
   { kind: "screenshot", icon: Camera },
@@ -86,6 +88,13 @@ export default function Home() {
 
   const firstName = (user?.name ?? user?.email ?? "friend").split(/[\s@]/)[0];
   const greetingKeyName = greetingKey();
+
+  // Recently viewed — refreshed whenever Home mounts (it remounts when the
+  // user returns from a Drop detail).
+  const [recentlyViewed, setRecentlyViewed] = useState<RecentlyViewedEntry[]>([]);
+  useEffect(() => {
+    if (userId) setRecentlyViewed(loadRecentlyViewed(userId));
+  }, [userId]);
 
   return (
     <div className="space-y-6 pb-2 lg:space-y-8">
@@ -162,6 +171,31 @@ export default function Home() {
           </button>
         ))}
       </div>
+
+      {/* Recently viewed — only when the user has opened Drops */}
+      {recentlyViewed.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-bold tracking-tight">{t("home.recentlyViewed")}</h2>
+          </div>
+          <div className="flex gap-2.5 overflow-x-auto pb-1 no-scrollbar">
+            {recentlyViewed.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => navigate(`/app/drop/${entry.id}`)}
+                className="flex shrink-0 cursor-pointer items-center gap-2.5 rounded-2xl border border-border/80 bg-card px-3.5 py-2.5 text-left transition-all hover:border-primary/30 active:scale-[0.98]"
+              >
+                <span className="text-lg">{KIND_META[entry.kind]?.emoji ?? "💭"}</span>
+                <span className="min-w-0 max-w-40">
+                  <span className="block truncate text-sm font-semibold">{entry.title}</span>
+                  <span className="block text-[11px] text-muted-foreground">{entry.category}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Upcoming strip — only when it has content */}
       {upcoming.data && upcoming.data.length > 0 && (

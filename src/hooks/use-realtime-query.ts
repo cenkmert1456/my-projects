@@ -71,7 +71,11 @@ export function useRealtimeQuery<T>(
       .catch((err: unknown) => {
         if (cancelled) return;
         // Keep any previously loaded data (stale-while-revalidate) so a
-        // transient failure never blanks the screen.
+        // transient failure never blanks the screen. The real Supabase error
+        // is logged (it surfaces in logcat on Android) so "couldn't load"
+        // screens are never a black box.
+        const raw = err instanceof Error ? err.message : String(err);
+        console.error(`[drop:query:${options.table}]`, raw);
         setError(authErrorMessage(err, "Couldn't load your data — pull to refresh."));
       })
       .finally(() => {

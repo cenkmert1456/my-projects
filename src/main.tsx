@@ -28,6 +28,7 @@ const Stacks = lazy(() => import("./pages/app/Stacks.tsx"));
 const StackDetail = lazy(() => import("./pages/app/StackDetail.tsx"));
 const Trash = lazy(() => import("./pages/app/Trash.tsx"));
 const Settings = lazy(() => import("./pages/app/Settings.tsx"));
+const Permissions = lazy(() => import("./pages/app/Permissions.tsx"));
 const Actions = lazy(() => import("./pages/app/Actions.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -182,6 +183,7 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="stacks/:id" element={<StackDetail />} />
                   <Route path="trash" element={<Trash />} />
                   <Route path="settings" element={<Settings />} />
+                  <Route path="permissions" element={<Permissions />} />
                   <Route path="actions" element={<Actions />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />

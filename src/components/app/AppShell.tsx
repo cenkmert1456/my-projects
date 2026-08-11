@@ -29,6 +29,7 @@ import { AddDropContext, type SharePayload } from "./AddDropContext";
 import { AddDropSheet, type DropKindOption } from "@/components/drops/AddDropSheet";
 import { MobileCaptureSheet } from "@/components/drops/MobileCaptureSheet";
 import { OnboardingOverlay } from "./OnboardingOverlay";
+import { PermissionSetupOverlay } from "./PermissionSetupOverlay";
 import { CommandPalette } from "./CommandPalette";
 import { QuickDrop } from "./QuickDrop";
 import { AppLockOverlay } from "./AppLockOverlay";
@@ -396,6 +397,9 @@ export default function AppShell() {
             visibility + exit animation, so AnimatePresence never gets
             unmounted mid-exit (which crashes React with a removeChild error). */}
         {user && <OnboardingOverlay />}
+
+        {/* First-launch permissions (native only, after onboarding) */}
+        {user && <PermissionSetupOverlay />}
 
         {/* First-launch DROP Intelligence provisioning (native only) */}
         <DropIntelligenceOverlay />

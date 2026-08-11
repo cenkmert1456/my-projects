@@ -47,13 +47,14 @@ import {
   Trash2,
   TrendingDown,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { recordViewed } from "@/lib/recently-viewed";
 import { toast } from "sonner";
 import { CATEGORY_META, ENTITY_LABELS, KIND_META, SOURCE_META } from "@/lib/drop-meta";
 import { formatDate, formatDateTime, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { haptic, requestNotificationPermission, scheduleLocalNotification, cancelLocalNotification } from "@/lib/mobile/native";
+import { haptic, openExternal, requestNotificationPermission, scheduleLocalNotification, cancelLocalNotification } from "@/lib/mobile/native";
 
 /** Derive a stable 32-bit notification id from any string id. */
 function notifId(raw: string): number {
@@ -110,6 +111,11 @@ export default function DropDetail() {
   const [showOcr, setShowOcr] = useState(false);
 
   const drop = data?.drop ?? null;
+
+  // Record the view so Home's "Recently viewed" strip stays fresh.
+  useEffect(() => {
+    if (drop && uid) recordViewed(uid, drop);
+  }, [drop, uid]);
 
   const entityGroups = useMemo(() => {
     if (!drop) return [];
@@ -293,11 +299,41 @@ export default function DropDetail() {
               </a>
             )}
             {mapsUrl && (
-              <a href={mapsUrl} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm" className="gap-1.5 rounded-xl">
+              <>
+                <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => void openExternal(mapsUrl)}>
                   <Navigation className="h-4 w-4" /> Open Maps
                 </Button>
-              </a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 rounded-xl"
+                  onClick={() =>
+                    void openExternal(
+                      `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                        [drop.place?.name, drop.place?.city, drop.place?.country].filter(Boolean).join(", "),
+                      )}`,
+                    )
+                  }
+                >
+                  <Navigation className="h-4 w-4" /> Directions
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 rounded-xl"
+                  onClick={async () => {
+                    const address = [drop.place?.name, drop.place?.city, drop.place?.country].filter(Boolean).join(", ");
+                    try {
+                      await navigator.clipboard.writeText(address);
+                      toast("Address copied");
+                    } catch {
+                      toast("Couldn't copy the address");
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" /> Copy address
+                </Button>
+              </>
             )}
             {drop.product && (
               <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => toast("We'll track this price — check Wishlist soon.")}>

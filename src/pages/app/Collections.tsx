@@ -39,20 +39,24 @@ export default function Collections() {
   const magic = useMemo(() => {
     if (!allDrops) return [];
     const now = Date.now();
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-    const inItaly = (d: Drop) =>
-      d.place?.country === "Italy" ||
-      d.entities.some((e) => e.type === "place" && e.metadata?.country === "Italy");
+    const startOfWeek = now - 7 * 86400000;
     const future = (d: Drop) =>
       (d.event?.startTime && d.event.startTime > now) ||
-      (d.reservation?.startTime && d.reservation.startTime > now);
+      (d.reservation?.startTime && d.reservation.startTime > now) ||
+      (d.flight?.departureTime && d.flight.departureTime > now) ||
+      (d.receipt?.returnDeadline && d.receipt.returnDeadline > now);
+    const travel = (d: Drop) => Boolean(d.flight || d.event || d.reservation || (d.category === "Travel"));
+    const isImage = (d: Drop) => d.kind === "screenshot" || d.kind === "image";
     return [
-      { id: "under100", name: "Under €100", emoji: "🪙", drops: allDrops.filter((d) => (d.product?.price ?? Infinity) < 100) },
-      { id: "italy", name: "Italy", emoji: "🇮🇹", drops: allDrops.filter(inItaly) },
-      { id: "thismonth", name: "This Month", emoji: "🗓️", drops: allDrops.filter((d) => d.savedAt >= startOfMonth) },
-      { id: "upcoming", name: "Upcoming", emoji: "⏰", drops: allDrops.filter(future) },
+      { id: "trips", name: "Trips", emoji: "✈️", drops: allDrops.filter(travel) },
+      { id: "receipts", name: "Receipts", emoji: "🧾", drops: allDrops.filter((d) => d.category === "Receipts" || d.receipt) },
+      { id: "products", name: "Products", emoji: "🛍️", drops: allDrops.filter((d) => d.product || d.category === "Products") },
+      { id: "places", name: "Places", emoji: "📍", drops: allDrops.filter((d) => d.place || d.category === "Places") },
+      { id: "documents", name: "Documents", emoji: "📄", drops: allDrops.filter((d) => d.kind === "document") },
       { id: "favorites", name: "Favorites", emoji: "⭐", drops: allDrops.filter((d) => d.starred) },
-      { id: "screenshots", name: "Screenshots", emoji: "📸", drops: allDrops.filter((d) => d.kind === "screenshot" || d.kind === "image") },
+      { id: "thisweek", name: "This Week", emoji: "🗓️", drops: allDrops.filter((d) => d.savedAt >= startOfWeek) },
+      { id: "screenshots", name: "Screenshots", emoji: "📸", drops: allDrops.filter(isImage) },
+      { id: "upcoming", name: "Upcoming", emoji: "⏰", drops: allDrops.filter(future) },
     ].filter((m) => m.drops.length > 0);
   }, [allDrops]);
 
@@ -215,12 +219,15 @@ function MagicCard({
 
 function toMagicQuery(id: string): string {
   const q: Record<string, string> = {
-    under100: "under €100",
-    italy: "italy",
-    thismonth: "this month",
-    upcoming: "upcoming",
+    trips: "trip OR flight OR travel",
+    receipts: "receipt",
+    products: "product",
+    places: "place",
+    documents: "document",
     favorites: "favorite",
+    thisweek: "this week",
     screenshots: "screenshot",
+    upcoming: "upcoming",
   };
   return `q=${encodeURIComponent(q[id] ?? "")}`;
 }

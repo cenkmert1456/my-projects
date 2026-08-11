@@ -8,8 +8,33 @@
 // `isNative()` checks.
 
 import { isAndroid, isNative } from "./platform";
+import { getPermissionState, requestPermission, openAppSettings } from "./permissions";
 
-export { isNative, isAndroid };
+export { isNative, isAndroid, openAppSettings };
+
+// Re-export the permission API so every capture flow uses one source of truth.
+export { getPermissionState, requestPermission } from "./permissions";
+export type { PermissionKind, PermissionState } from "./permissions";
+
+/**
+ * Typed capture error — the UI can offer the right recovery action.
+ * - permanent === true  → "Camera access is disabled [Open Settings]"
+ * - otherwise           → "Allow camera access to take photos" (retry prompt)
+ */
+export class DropPermissionError extends Error {
+  kind: "camera" | "microphone" | "notifications";
+  permanent: boolean;
+  constructor(kind: "camera" | "microphone" | "notifications", permanent: boolean) {
+    super(permanent ? `${kind}-permanently-denied` : `${kind}-denied`);
+    this.name = "DropPermissionError";
+    this.kind = kind;
+    this.permanent = permanent;
+  }
+}
+
+function isCancelMessage(message: string): boolean {
+  return /cancel/i.test(message);
+}
 
 // ---------------------------------------------------------------------------
 // Haptics
@@ -71,11 +96,22 @@ export interface CapturedPhoto {
 
 /**
  * Open the native camera. Returns null when the user cancels.
- * Only requests the camera permission here (contextual, not at startup).
+ *
+ * The camera runtime permission is requested here — contextually, at the
+ * moment the user taps Take Photo — through the real Android API. If the
+ * user permanently denied it, throws DropPermissionError(permanent) so the
+ * UI can offer "Open Settings". Cancellation is never treated as an error.
  */
 export async function takePhoto(): Promise<CapturedPhoto | null> {
   if (!isNative()) {
     return pickFromInput(true);
+  }
+  const state = await getPermissionState("camera");
+  if (state.status !== "granted") {
+    const after = await requestPermission("camera");
+    if (after.status !== "granted") {
+      throw new DropPermissionError("camera", after.permanent);
+    }
   }
   const { Camera, CameraSource, CameraResultType } = await import("@capacitor/camera");
   try {
@@ -93,7 +129,7 @@ export async function takePhoto(): Promise<CapturedPhoto | null> {
       displayName: `photo-${Date.now()}.${photo.format ?? "jpg"}`,
     };
   } catch {
-    return null; // user cancelled or permission denied
+    return null; // user cancelled the camera app
   }
 }
 
@@ -113,6 +149,11 @@ export async function pickPhotos(multiple = false): Promise<CapturedPhoto[]> {
     const file = await pickFromInput(false);
     return file ? [file] : [];
   }
+
+  // Photos need NO permission: on Android 13+ this path uses the system
+  // Photo Picker, and the Capacitor Camera plugin handles the legacy gallery
+  // on older versions. If the OS picker can't open, fall back to the
+  // file-picker plugin. Cancellation returns [] — never an error.
   if (!multiple) {
     try {
       const { Camera, CameraSource, CameraResultType } = await import("@capacitor/camera");
@@ -130,25 +171,28 @@ export async function pickPhotos(multiple = false): Promise<CapturedPhoto[]> {
           displayName: `photo-${Date.now()}.${photo.format ?? "jpg"}`,
         },
       ];
-    } catch {
-      // Photo picker unavailable / permission blocked — fall through to the
-      // file picker below, which surfaces a clear error if that fails too.
+    } catch (err) {
+      if (err instanceof Error && isCancelMessage(err.message)) return [];
+      // picker genuinely unavailable — try the file picker below
     }
   }
+
   const { FilePicker } = await import("@capawesome/capacitor-file-picker");
   try {
     const res = await FilePicker.pickImages({ limit: multiple ? 0 : 1 });
-    const files = res.files ?? [];
-    return files
-      .filter((f) => f.path)
-      .map((f) => ({
-        path: f.path as string,
-        displayName: f.name,
-        format: (f.mimeType ?? "image/jpeg").split("/")[1],
-        size: f.size,
-      }));
-  } catch {
-    throw new Error("Couldn't open the photo library.");
+    const files = (res.files ?? []).filter((f) => f.path);
+    return files.map((f) => ({
+      path: f.path as string,
+      displayName: f.name,
+      format: (f.mimeType ?? "image/jpeg").split("/")[1],
+      size: f.size,
+    }));
+  } catch (err) {
+    if (err instanceof Error && isCancelMessage(err.message)) return [];
+    // Neither the photo picker nor the file picker could open. The user is
+    // told the truth and the app keeps working — nothing here touches
+    // storage permissions, so there is no "check photo permission" dead-end.
+    throw new Error("Couldn't open the photo library on this device.");
   }
 }
 

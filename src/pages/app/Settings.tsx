@@ -5,6 +5,8 @@ import { profileService } from "@/lib/services";
 import { checkWebAI, type WebAIHealth } from "@/lib/ai-health";
 import { checkBackendHealth, type BackendHealth } from "@/lib/supabase/health";
 import {
+  CalendarClock,
+  Camera,
   Check,
   ChevronDown,
   Cpu,
@@ -14,6 +16,7 @@ import {
   HardDrive,
   Loader2,
   Lock,
+  Mic,
   Monitor,
   Moon,
   RefreshCw,
@@ -36,6 +39,9 @@ import { isNative } from "@/lib/mobile/platform";
 import { biometricsAvailable } from "@/lib/mobile/native";
 import { setAppLockDelay, setAppLockEnabled, type LockDelay } from "@/lib/mobile/app-lock";
 import { useDropAI } from "@/lib/drop-ai";
+import { getPermissionState, type PermissionKind } from "@/lib/mobile/permissions";
+import { storageService } from "@/lib/services/storage";
+import { Bell, ChevronRight, Shield as ShieldIcon } from "lucide-react";
 
 export default function Settings() {
   const { t } = useTranslation();
@@ -74,7 +80,7 @@ export default function Settings() {
 
   useEffect(() => {
     void runHealthCheck();
-    void checkBackendHealth().then(setBackend);
+    void checkBackendHealth(uid).then(setBackend);
     void (async () => {
       const { appLockEnabled, loadAppLockSettings } = await import("@/lib/mobile/app-lock");
       await loadAppLockSettings();
@@ -141,7 +147,13 @@ export default function Settings() {
       />
 
       {/* Backend & sync */}
-      <BackendStatusSection health={backend} onRecheck={() => void checkBackendHealth().then(setBackend)} />
+      <BackendStatusSection health={backend} onRecheck={() => void checkBackendHealth(uid).then(setBackend)} />
+
+      {/* Permissions — real status, managed from the dedicated screen */}
+      <PermissionsSection />
+
+      {/* Notifications */}
+      <NotificationsSection />
 
       {/* Privacy */}
       <section className="space-y-1 rounded-3xl border border-border/80 bg-card p-2">
@@ -242,6 +254,7 @@ export default function Settings() {
           <Cpu className="h-5 w-5 text-primary" />
           <h2 className="font-bold tracking-tight">Data & storage</h2>
         </div>
+        <StorageUsageRow uid={uid} />
         <Button
           variant="outline"
           className="w-full justify-start gap-2.5 rounded-2xl"
@@ -411,6 +424,157 @@ function BackendStatusSection({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Permissions — live runtime status for camera/mic/notifications with a
+ * single entry point into the full Permissions screen.
+ */
+function PermissionsSection() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [statuses, setStatuses] = useState<Record<PermissionKind, string | null>>({
+    camera: null,
+    microphone: null,
+    notifications: null,
+    photos: null,
+    documents: null,
+  });
+
+  useEffect(() => {
+    let disposed = false;
+    void (async () => {
+      const next: Record<PermissionKind, string | null> = { camera: null, microphone: null, notifications: null, photos: null, documents: null };
+      for (const kind of ["camera", "microphone", "notifications"] as PermissionKind[]) {
+        try {
+          const s = await getPermissionState(kind);
+          if (!disposed) next[kind] = s.status;
+        } catch {
+          if (!disposed) next[kind] = null;
+        }
+      }
+      if (!disposed) setStatuses(next);
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  const chip = (kind: PermissionKind) => {
+    const s = statuses[kind];
+    if (s === "granted") return <span className="rounded-full bg-emerald-500/12 px-2.5 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-300">Allowed</span>;
+    if (s === "denied" || s === "limited") return <span className="rounded-full bg-amber-500/12 px-2.5 py-1 text-xs font-bold text-amber-600 dark:text-amber-300">Not allowed</span>;
+    return <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground">Checking…</span>;
+  };
+
+  return (
+    <section className="space-y-1 rounded-3xl border border-border/80 bg-card p-2">
+      <div className="flex items-center justify-between px-3 pb-1 pt-2">
+        <h2 className="flex items-center gap-2 font-bold tracking-tight">
+          <ShieldIcon className="h-4 w-4 text-primary" /> {t("permissions.title")}
+        </h2>
+        <button
+          type="button"
+          onClick={() => navigate("/app/permissions")}
+          className="flex cursor-pointer items-center gap-0.5 text-xs font-semibold text-primary"
+        >
+          {t("permissions.manageAll")} <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <SettingRow icon={Camera as typeof Sun} title={t("permissions.camera")} desc={t("permissions.cameraDesc")}>
+        {chip("camera")}
+      </SettingRow>
+      <SettingRow icon={Mic as typeof Sun} title={t("permissions.microphone")} desc={t("permissions.microphoneDesc")}>
+        {chip("microphone")}
+      </SettingRow>
+      <SettingRow icon={Bell as typeof Sun} title={t("permissions.notifications")} desc={t("permissions.notificationsDesc")}>
+        {chip("notifications")}
+      </SettingRow>
+      <p className="px-3 pb-3 pt-1 text-xs leading-relaxed text-muted-foreground">
+        {t("permissions.settingsNote")}
+      </p>
+    </section>
+  );
+}
+
+/** Notifications — what DROP uses them for, with a path to manage them. */
+function NotificationsSection() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  return (
+    <section className="space-y-1 rounded-3xl border border-border/80 bg-card p-2">
+      <div className="px-3 pb-1 pt-2">
+        <h2 className="flex items-center gap-2 font-bold tracking-tight">
+          <Bell className="h-4 w-4 text-primary" /> {t("permissions.notifications")}
+        </h2>
+      </div>
+      <SettingRow icon={CalendarClock as typeof Sun} title={t("permissions.reminders")} desc={t("permissions.remindersDesc")}>
+        <button
+          type="button"
+          onClick={() => navigate("/app/permissions")}
+          className="cursor-pointer text-xs font-semibold text-primary"
+        >
+          {t("permissions.manage")}
+        </button>
+      </SettingRow>
+      <p className="px-3 pb-3 pt-1 text-xs leading-relaxed text-muted-foreground">
+        {t("permissions.notificationsDesc")}
+      </p>
+    </section>
+  );
+}
+
+/** Storage used — real bytes from the Storage API, with the biggest files. */
+function StorageUsageRow({ uid }: { uid: string | null }) {
+  const [usage, setUsage] = useState<{ bytes: number; files: number; largest: Array<{ name: string; bytes: number }> } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
+    let disposed = false;
+    void storageService.usage(uid).then((u) => {
+      if (!disposed) {
+        setUsage(u);
+        setLoading(false);
+      }
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [uid]);
+
+  const fmt = (bytes: number) =>
+    bytes >= 1_000_000_000
+      ? `${(bytes / 1_000_000_000).toFixed(2)} GB`
+      : bytes >= 1_000_000
+        ? `${(bytes / 1_000_000).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(bytes / 1000))} KB`;
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/40 p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold">Storage used</p>
+        <span className="rounded-xl bg-muted px-2.5 py-1 text-xs font-bold">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : usage ? fmt(usage.bytes) : "—"}
+        </span>
+      </div>
+      {usage && usage.largest.length > 0 && (
+        <div className="mt-2.5 space-y-1.5">
+          {usage.largest.map((f) => (
+            <div key={f.name} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span className="truncate">{f.name}</span>
+              <span className="shrink-0 font-semibold">{fmt(f.bytes)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {usage && usage.files === 0 && <p className="mt-2 text-xs text-muted-foreground">No files saved yet.</p>}
+      {!loading && !usage && <p className="mt-2 text-xs text-muted-foreground">Couldn't read storage right now.</p>}
+    </div>
   );
 }
 
