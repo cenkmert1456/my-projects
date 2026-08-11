@@ -1,3 +1,4 @@
+import { vlyPlugin } from "@vly-ai/integrations";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -73,7 +74,7 @@ export default defineConfig(({ command, mode }) => {
     // every script/style path must resolve relative to the document — never
     // absolute. This is the Capacitor-recommended Vite setting.
     base: "./",
-    plugins: [
+    plugins: [vlyPlugin(), 
       react(),
       tailwindcss(),
       supabaseEnvCheck(command, env),
