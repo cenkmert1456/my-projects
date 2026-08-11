@@ -9,8 +9,13 @@
  *
  * Sources written to assets/
  *   - icon-only.png   1024×1024  transparent bg, drop mark only (adaptive fg)
- *   - splash.png      2732×2732  dark brand bg + centered drop mark
  *   - ic_stat_drop.png  96×96    white drop mark (Android notification icon)
+ *
+ * NOTE: there is deliberately no splash.png anymore. The Android 12+ launch
+ * splash is implemented natively with the AndroidX SplashScreen theme + an
+ * AnimatedVectorDrawable (android/app/src/main/res/…/styles.xml and
+ * ic_splash_mark_anim.xml); the in-app second stage lives in index.html.
+ * Regenerating PNG splashes is obsolete and would regress the design.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -55,14 +60,7 @@ await render(
   "icon-only.png",
 );
 
-// 2. Splash: dark brand background + centered mark (matches SplashScreen
-//    backgroundColor #15130f and StatusBar config).
-await render(
-  markSvg({ size: 2732, mark: "#ffffff", circle: "#e84c1f", background: "#15130f", padRatio: 0.68 }),
-  "splash.png",
-);
-
-// 3. Android notification small icon: flat white mark (Android tints it).
+// 2. Android notification small icon: flat white mark (Android tints it).
 await render(
   markSvg({ size: 96, mark: "#ffffff", circle: "#ffffff", padRatio: 0.15 }),
   "ic_stat_drop.png",

@@ -124,11 +124,16 @@ class AppErrorBoundary extends React.Component<
 function RouteSyncer() {
   const location = useLocation();
 
-  // Remove the inline HTML boot splash as soon as React has mounted so the
-  // native splash → HTML splash → React boot chain never shows a white frame.
+  // Dismiss the inline HTML boot splash as soon as React has mounted: fade it
+  // out (never a hard cut, never a white frame) and remove it after the
+  // transition so the native splash → HTML splash → React chain stays dark
+  // and continuous. Never blocks startup — it is removed on first mount.
   useEffect(() => {
     const el = document.getElementById("boot-splash");
-    if (el) el.remove();
+    if (!el) return;
+    el.classList.add("hide");
+    const t = window.setTimeout(() => el.remove(), 350);
+    return () => window.clearTimeout(t);
   }, []);
 
   // Keep the document title in sync with the active screen.

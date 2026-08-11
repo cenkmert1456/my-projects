@@ -28,17 +28,11 @@ const config: CapacitorConfig = {
     limitsNavigationsToAppBoundDomains: false,
   },
 
+  // The launch splash is implemented natively with the AndroidX SplashScreen
+  // theme (see android/app/src/main/res/values/styles.xml) — the deprecated
+  // @capacitor/splash-screen JS plugin is intentionally NOT configured, so no
+  // old splash PNG is referenced and startup never waits on JS.
   plugins: {
-    SplashScreen: {
-      launchShowDuration: 400,
-      launchAutoHide: true,
-      backgroundColor: "#15130f",
-      androidSplashResourceName: "splash",
-      androidScaleType: "centerCrop",
-      showSpinner: false,
-      splashFullScreen: true,
-      splashImmersive: true,
-    },
     StatusBar: {
       style: "LIGHT",
       backgroundColor: "#15130f",

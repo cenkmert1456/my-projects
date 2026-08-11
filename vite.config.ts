@@ -69,9 +69,17 @@ function supabaseEnvCheck(command: "build" | "serve", env: Record<string, string
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
+    // Relative asset base: the built index.html is served from inside the
+    // Capacitor bundle (https://localhost over the WebView asset loader), so
+    // every script/style path must resolve relative to the document — never
+    // absolute. This is the Capacitor-recommended Vite setting.
+    base: "./",
     plugins: [
       react(),
-      vlyPlugin(),
+      // @vly-ai/integrations is the Freebuff preview/HMR error reporter. It
+      // must NEVER ship in a production bundle (it would execute in the app
+      // WebView, whose hostname is `localhost`). Dev server only.
+      ...(command === "serve" ? [vlyPlugin()] : []),
       tailwindcss(),
       supabaseEnvCheck(command, env),
     ],

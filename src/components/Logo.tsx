@@ -17,6 +17,31 @@ export function DropMark({ className }: { className?: string }) {
   );
 }
 
+/**
+ * DropGlyph — the minimal DROP mark (cream droplet outline + inner dot) used
+ * on the boot screen and anywhere a calm, premium brand mark is needed. It
+ * inherits `currentColor`, so it adapts to light/dark surfaces.
+ */
+export function DropGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 288 288"
+      className={cn("h-16 w-16", className)}
+      aria-hidden="true"
+    >
+      <path
+        d="M144 66c26 32 51 56 51 87a51 51 0 0 1-102 0c0-31 25-55 51-87z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="144" cy="166" r="13" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function Logo({
   className,
   wordmarkClassName,

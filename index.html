@@ -5,7 +5,7 @@
     <link
       rel="icon"
       type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e84c1f'/%3E%3Cpath d='M32 12c8 10 16 17.5 16 27a16 16 0 0 1-32 0c0-9.5 8-17 16-27z' fill='white'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2315130f'/%3E%3Cpath d='M32 11c8.5 10.5 17 18.4 17 28.4A17 17 0 0 1 15 39.4C15 29.4 23.5 21.5 32 11z' fill='none' stroke='%23f5f1ea' stroke-width='3'/%3E%3Ccircle cx='32' cy='39' r='4.5' fill='%23f5f1ea'/%3E%3C/svg%3E"
     />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -25,9 +25,12 @@
       rel="stylesheet"
     />
     <style>
-      /* Inline boot splash — shown instantly (before React mounts) so the
-         native splash → HTML → React chain never flashes white. Removed by
-         main.tsx on first render. */
+      /* Inline boot splash — the second stage of the DROP launch sequence.
+         It appears the instant the WebView paints (before React mounts) and
+         bridges the native AndroidX splash to the app shell without a white
+         frame. The DROP mark draws itself once, the inner dot drops, and the
+         wordmark settles in — ~700ms, one shot, no loop, no glow.
+         main.tsx adds .hide and removes the element once React mounts. */
       #boot-splash {
         position: fixed;
         inset: 0;
@@ -36,37 +39,92 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 16px;
+        gap: 24px;
         background: #15130f;
+        opacity: 1;
+        transition: opacity 0.3s ease;
       }
-      #boot-splash svg {
-        width: 64px;
-        height: 64px;
-        animation: boot-pulse 1.6s ease-in-out infinite;
+      #boot-splash.hide {
+        opacity: 0;
+        pointer-events: none;
       }
-      #boot-splash span {
+      #boot-splash .mark {
+        width: 92px;
+        height: 92px;
+        animation: boot-scale 0.55s 0.08s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      #boot-splash .drop-outline {
+        stroke-dasharray: 420;
+        stroke-dashoffset: 420;
+        animation: boot-draw 0.55s 0.12s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #boot-splash .drop-dot {
+        animation: boot-dot 0.35s 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      #boot-splash .word {
         color: #f5f1ea;
         font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-        font-size: 18px;
+        font-size: 19px;
         font-weight: 800;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.16em;
+        animation: boot-word 0.4s 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
       }
-      @keyframes boot-pulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(0.96); opacity: 0.85; }
+      @keyframes boot-scale {
+        0% {
+          transform: scale(0.88);
+          opacity: 0.6;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      @keyframes boot-draw {
+        100% {
+          stroke-dashoffset: 0;
+        }
+      }
+      @keyframes boot-dot {
+        0% {
+          transform: translateY(10px);
+          opacity: 0.4;
+        }
+        100% {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      @keyframes boot-word {
+        0% {
+          transform: translateY(12px);
+          opacity: 0;
+          letter-spacing: 0.3em;
+        }
+        100% {
+          transform: translateY(0);
+          opacity: 1;
+          letter-spacing: 0.16em;
+        }
       }
     </style>
+    <!-- Vite entry — replaced at build time with the bundled app script. -->
+    <script type="module" src="/src/main.tsx"></script>
   </head>
   <body>
     <div id="root"></div>
     <div id="boot-splash" aria-hidden="true">
-      <svg viewBox="0 0 64 64">
-        <rect width="64" height="64" rx="17" fill="#e84c1f" />
-        <path d="M32 11c8.5 10.5 17 18.4 17 28.4A17 17 0 0 1 15 39.4C15 29.4 23.5 21.5 32 11z" fill="#fff" />
-        <circle cx="32" cy="39" r="6.5" fill="#e84c1f" opacity="0.9" />
+      <svg class="mark" viewBox="0 0 288 288" fill="none" aria-hidden="true">
+        <path
+          class="drop-outline"
+          d="M144 66c26 32 51 56 51 87a51 51 0 0 1-102 0c0-31 25-55 51-87z"
+          stroke="#F5F1EA"
+          stroke-width="6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle class="drop-dot" cx="144" cy="166" r="13" fill="#F5F1EA" />
       </svg>
-      <span>DROP</span>
+      <span class="word">DROP</span>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

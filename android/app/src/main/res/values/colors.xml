@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DROP brand palette (dark-first, warm near-black). -->
+    <color name="colorPrimary">#15130F</color>
+    <color name="colorPrimaryDark">#15130F</color>
+    <color name="colorAccent">#F5F1EA</color>
+
+    <!-- Splash / startup surfaces — must match the in-app boot splash and
+         the WebView theme-color so there is never a white flash. -->
+    <color name="splash_background">#15130F</color>
+    <color name="splash_icon">#F5F1EA</color>
+</resources>
