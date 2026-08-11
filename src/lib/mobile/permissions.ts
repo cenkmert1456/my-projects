@@ -42,21 +42,17 @@ interface NativeStatuses {
   photosMode?: string;
 }
 
-function nativePlugin(): Promise<{
+interface DropPermissionsPlugin {
   getStatuses: () => Promise<NativeStatuses>;
-  requestPermission: (opts: { kind: string }) => Promise<{ microphone?: NativePermissionState }>;
+  requestPermission: (opts: { kind: string }) => Promise<{ camera?: NativePermissionState; microphone?: NativePermissionState }>;
   openAppSettings: () => Promise<void>;
-} | null> {
+}
+
+function nativePlugin(): Promise<DropPermissionsPlugin | null> {
   if (!isNative()) return Promise.resolve(null);
   return import("@capacitor/core").then(({ Capacitor }) => {
     const plugin = (Capacitor as unknown as { Plugins: Record<string, unknown> }).Plugins
-      ?.DropPermissions as
-      | {
-          getStatuses: () => Promise<NativeStatuses>;
-          requestPermission: (opts: { kind: string }) => Promise<{ microphone?: NativePermissionState }>;
-          openAppSettings: () => Promise<void>;
-        }
-      | undefined;
+      ?.DropPermissions as DropPermissionsPlugin | undefined;
     return plugin ?? null;
   });
 }
@@ -164,11 +160,23 @@ export async function requestPermission(kind: PermissionKind): Promise<Permissio
   }
 
   if (kind === "camera") {
-    try {
-      const { Camera } = await import("@capacitor/camera");
-      await Camera.requestPermissions();
-    } catch {
-      // camera plugin unavailable — nothing more we can do
+    const plugin = await nativePlugin();
+    if (plugin) {
+      // Native Android: request CAMERA through DropPermissions so the request
+      // is tracked (permanent-denial detection) and the system dialog is the
+      // real one. Resolves with the state after the dialog.
+      try {
+        await plugin.requestPermission({ kind: "camera" });
+      } catch {
+        // user dismissed the dialog — re-check below reports the truth
+      }
+    } else {
+      try {
+        const { Camera } = await import("@capacitor/camera");
+        await Camera.requestPermissions();
+      } catch {
+        // camera plugin unavailable — nothing more we can do
+      }
     }
     return getPermissionState("camera");
   }

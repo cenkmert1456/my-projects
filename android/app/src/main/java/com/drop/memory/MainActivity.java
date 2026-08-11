@@ -19,6 +19,12 @@ public class MainActivity extends BridgeActivity {
         // so the app never flashes white or shows an empty WebView while the
         // bundled app is loading.
         SplashScreen.install(this);
+        // Register DROP's app-local native plugins. DropPermissions provides
+        // real runtime permission state (incl. permanently-denied detection),
+        // the RECORD_AUDIO request path, and the "Open Settings" deep link;
+        // IncomingShare handles ACTION_SEND share intents. Without these
+        // registerPlugin calls the plugins are never reachable from JS.
+        registerPlugin(DropPermissionsPlugin.class);
         registerPlugin(IncomingSharePlugin.class);
         super.onCreate(savedInstanceState);
     }
