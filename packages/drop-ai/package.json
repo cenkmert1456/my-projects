@@ -4,8 +4,8 @@
   "description": "DROP Intelligence — zero-configuration on-device AI engine (OCR, embeddings, tiered models) for Android & iOS",
   "license": "MIT",
   "type": "module",
-  "main": "dist/plugin.js",
-  "types": "dist/definitions.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": ["dist", "android", "ios", "README.md", "Package.swift"],
   "scripts": {
     "build": "tsc -p tsconfig.json"

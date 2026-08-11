@@ -97,7 +97,7 @@ async function main() {
 
   if (!URL || !ANON) {
     console.error("\n  Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.");
-    console.error("  Add them to the Freebuff Keys/API keys tab and re-run.");
+    console.error("  Add them to the project Keys/API keys tab and re-run.");
     process.exit(1);
   }
   console.log(`\n  Backend: ${URL}`);
@@ -242,6 +242,15 @@ async function main() {
       const leak = Array.isArray(stolen) && stolen.length > 0;
       if (leak) fail("isolation", "USER B READ USER A'S DROP — RLS broken!");
       else ok("isolation", "user B cannot read user A's drop (RLS works)");
+
+      // 8b. Storage isolation — user B must NOT read user A's private object
+      const objPath = `${sessionA.user.id}/test/drop.png`;
+      try {
+        await storageRead(tokenB, objPath);
+        fail("storage isolation", "USER B READ USER A'S STORAGE OBJECT — storage RLS broken!");
+      } catch (e) {
+        ok("storage isolation", `user B cannot read user A's storage object (${e.message.split(":")[0]})`);
+      }
     }
   } catch (e) {
     ok("isolation", `user B blocked (${e.message.split(":")[0]})`);

@@ -81,7 +81,7 @@ Then provision the database **automatically** — tables, RLS policies, storage
 buckets, pgvector, triggers and the search RPC are all applied by one command:
 
 ```bash
-# Needs a personal access token + project ref (add to the Freebuff Keys tab,
+# Needs a personal access token + project ref (add to the project Keys tab,
 # or pass --token / --ref):
 npm run supabase:setup
 ```
@@ -348,17 +348,21 @@ bun run build:android            # debug APK (local testing)
 bun run build:android:release    # signed release AAB (Play) + APK
 ```
 
-For the release build, create a keystore and point Gradle at it in
-`android/app/build.gradle` under `signingConfigs` / `buildTypes.release`:
+For the release build, create a keystore and configure signing through the
+gitignored `android/keystore.properties` file — never commit the keystore
+or its passwords (both are in `.gitignore`):
 
 ```bash
-keytool -genkey -v -keystore drop-release.keystore -alias drop -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore android/drop-release.keystore -alias drop -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-Then configure `release` signing (storeFile, storePassword, keyAlias,
-keyPassword) and set `versionCode`/`versionName` in
-`android/app/build.gradle` (default `versionCode 1`, `versionName "1.0.0"`).
-Upload the `.aab` to **Play Console → Internal testing → Production**.
+Then create `android/keystore.properties` (storeFile, storePassword,
+keyAlias, keyPassword). `android/app/build.gradle` reads it automatically and
+applies it to the `release` buildType; without the file, release builds fall
+back to debug signing so local testing still works. Bump `versionCode` (never
+decrease it) and `versionName` per release — defaults are `versionCode 1`,
+`versionName "1.0.0"`. Upload the `.aab` to **Play Console - Internal
+testing - Production**.
 
 > Debug builds are signed with the debug keystore automatically — nothing to
 > configure for local testing.
@@ -433,7 +437,7 @@ For production:
 
 1. Create a Supabase project (or use an existing one).
 2. Add `SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF` (and
-   `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`) to the Freebuff Keys tab.
+   `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`) to the project Keys tab.
 3. Run `npm run supabase:setup` — this **applies** every migration
    automatically (tables, RLS, storage buckets, pgvector, triggers, RPC) and
    verifies the result. No manual SQL.

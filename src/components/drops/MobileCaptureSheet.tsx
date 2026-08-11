@@ -42,6 +42,7 @@ import {
   type CapturedPhoto,
 } from "@/lib/mobile/native";
 import { optimizeImage, dataUrlToBlob } from "@/lib/mobile/image";
+import { enrichDropAfterSave } from "@/lib/services/enrich";
 import { VoiceRecorder } from "@/lib/mobile/voice";
 import { authErrorMessage } from "@/lib/supabase/auth-errors";
 import { useTranslation } from "react-i18next";
@@ -220,7 +221,18 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
         const blob = await pickedFileToBlob(p.photo);
         if (blob) {
           const result = await uploadFile(blob, { kind: p.kind, fileName: p.fileName });
-          if (result?.dropId && result.duplicate !== true) ids.push(String(result.dropId));
+          if (result?.dropId && result.duplicate !== true) {
+            ids.push(String(result.dropId));
+            // SAVE FIRST, ENRICH SECOND — OCR + vision run in the background;
+            // they never block or fail the save.
+            if (userId) {
+              void enrichDropAfterSave({
+                userId,
+                dropId: String(result.dropId),
+                imageDataUrl: p.photo.dataUrl,
+              });
+            }
+          }
         }
         setProgress({ done: i + 1, total: pending.length });
       }
@@ -443,6 +455,13 @@ export function MobileCaptureSheet({ open, onOpenChange, share }: Props) {
                       kind: "screenshot",
                       fileName: share.fileName ?? `shared-${Date.now()}.jpg`,
                     });
+                    if (result?.dropId && result.duplicate !== true) {
+                      void enrichDropAfterSave({
+                        userId: userId ?? "",
+                        dropId: String(result.dropId),
+                        imageDataUrl: share.imageDataUrl,
+                      });
+                    }
                     finishOne(result);
                     goToDrop(result);
                     return;

@@ -1,4 +1,3 @@
-import { vlyPlugin } from "@vly-ai/integrations";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -76,10 +75,6 @@ export default defineConfig(({ command, mode }) => {
     base: "./",
     plugins: [
       react(),
-      // @vly-ai/integrations is the Freebuff preview/HMR error reporter. It
-      // must NEVER ship in a production bundle (it would execute in the app
-      // WebView, whose hostname is `localhost`). Dev server only.
-      ...(command === "serve" ? [vlyPlugin()] : []),
       tailwindcss(),
       supabaseEnvCheck(command, env),
     ],
@@ -87,9 +82,8 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
-      // Force a single copy of React across all packages (including vlyPlugin).
-      // Without this, @vly-ai/integrations can resolve its own React copy, which
-      // triggers "Invalid hook call" errors at runtime.
+      // Force a single copy of React across all packages so no duplicate
+      // React bundles can ever resolve (prevents "Invalid hook call" errors).
       dedupe: ["react", "react/jsx-runtime", "react-dom", "react-dom/client"],
     },
     build: {
@@ -166,10 +160,10 @@ export default defineConfig(({ command, mode }) => {
       // Bind to all interfaces so WebContainer's server-ready event fires.
       host: true,
       port: 5173,
-      // HMR must stay disabled in Freebuff Web projects: the platform syncs file
-      // changes to the dev server, and hot updates corrupt the browser's module
-      // graph, causing "Failed to fetch dynamically imported module" runtime
-      // errors. Full page reloads pick up changes reliably.
+      // HMR must stay disabled: the platform syncs file changes to the dev
+      // server, and hot updates corrupt the browser's module graph, causing
+      // "Failed to fetch dynamically imported module" runtime errors. Full
+      // page reloads pick up changes reliably.
       hmr: false,
     },
   };

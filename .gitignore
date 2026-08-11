@@ -1,3 +1,6 @@
 .env.local
 node_modules
 dist
+android/keystore.properties
+android/*.jks
+android/*.keystore

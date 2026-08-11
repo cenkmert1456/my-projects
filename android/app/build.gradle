@@ -8,7 +8,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +16,35 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Google Play release signing — configured ONLY from a local,
+    // gitignored keystore.properties (never committed). Absent the file,
+    // the release build keeps Capacitor's default debug signing so local
+    // bundleRelease testing still works; Play uploads must create
+    // android/keystore.properties first (see README).
+    def releaseKeystoreProps = new Properties()
+    def releaseKeystoreFile = rootProject.file("keystore.properties")
+    if (releaseKeystoreFile.exists()) {
+        releaseKeystoreFile.withInputStream { releaseKeystoreProps.load(it) }
+    }
+    def hasReleaseKeystore = releaseKeystoreProps.containsKey('storeFile')
+
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            release {
+                storeFile file(releaseKeystoreProps['storeFile'])
+                storePassword releaseKeystoreProps['storePassword']
+                keyAlias releaseKeystoreProps['keyAlias']
+                keyPassword releaseKeystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseKeystore) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

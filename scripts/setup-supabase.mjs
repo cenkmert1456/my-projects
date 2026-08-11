@@ -10,7 +10,7 @@
  *
  *   npm run supabase:setup
  *
- * Credentials (paste into the Freebuff Keys/API keys tab, or pass as CLI args):
+ * Credentials (paste into the project Keys/API keys tab, or pass as CLI args):
  *   SUPABASE_ACCESS_TOKEN   personal access token (Management API) — REQUIRED
  *   SUPABASE_PROJECT_REF    project reference, e.g. "abcdefghijklm" — REQUIRED
  *   SUPABASE_URL            https://<ref>.supabase.co — optional (auto-derived)
@@ -91,7 +91,7 @@ async function main() {
 
   if (!TOKEN || !REF) {
     console.error("");
-    console.error("  Missing credentials. Add these to the Freebuff Keys/API keys tab:");
+    console.error("  Missing credentials. Add these to the project Keys/API keys tab:");
     console.error("    SUPABASE_ACCESS_TOKEN   personal access token");
     console.error("    SUPABASE_PROJECT_REF    project reference");
     console.error("");
